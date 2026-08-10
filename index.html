@@ -1748,6 +1748,31 @@
     nav button { font-size: 11.5px; padding: 7px 8px; }
     .kanban { grid-template-columns: 1fr; }
   }
+  .global-search { width:min(280px,24vw); border:1px solid var(--line); background:rgba(255,255,255,.72); border-radius:12px; padding:9px 12px; color:var(--ink); outline:none; }
+  .global-search:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(92,73,196,.12); }
+  .dashboard-strip { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px; }
+  .dash-stat { padding:14px 16px; border:1px solid var(--line); border-radius:16px; background:rgba(255,255,255,.56); }
+  .dash-stat strong { display:block; font-size:24px; line-height:1.1; }
+  .dash-stat span { color:var(--ink-3); font-size:12px; }
+  .search-results { display:flex; flex-direction:column; gap:8px; }
+  .search-result { width:100%; text-align:left; padding:12px 14px; border:1px solid var(--line); border-radius:12px; background:white; cursor:pointer; }
+  .search-result:hover { border-color:var(--accent); transform:translateY(-1px); }
+  .search-result small { display:block; color:var(--ink-3); margin-bottom:3px; }
+  .trash-item { display:flex; align-items:center; gap:10px; padding:11px 0; border-bottom:1px solid var(--line); }
+  .trash-item .trash-label { flex:1; min-width:0; }
+  .trash-item small { color:var(--ink-3); display:block; }
+  .today-label { color:var(--accent); font-weight:800; }
+  @media (max-width: 760px) {
+    .topbar { flex-wrap:wrap; }
+    .brand { order:1; }
+    .topbar-actions { order:2; }
+    .global-search { order:3; width:100%; }
+    #nav { position:fixed; left:12px; right:12px; bottom:10px; z-index:100; background:rgba(255,255,255,.94); backdrop-filter:blur(18px); border:1px solid var(--line); border-radius:16px; padding:5px; box-shadow:0 12px 35px rgba(30,30,40,.16); justify-content:space-around; }
+    #nav button { flex:1; min-height:42px; }
+    .dashboard-strip { grid-template-columns:repeat(2,1fr); }
+    .main { padding-bottom:92px; }
+    .tb-add { opacity:.5; }
+  }
 </style>
 </head>
 <body>
@@ -1762,9 +1787,11 @@
       <button data-view="social"><span class="icon">▢</span> Redes</button>
       <button data-view="notes"><span class="icon">✎</span> Notas</button>
     </nav>
+    <input class="global-search" id="global-search" type="search" placeholder="Buscar em tudo..." aria-label="Buscar em tudo">
     <div class="topbar-actions">
       <span class="sync-pill" id="sync-pill" title="Status de sincronização"><span class="sync-dot"></span><span class="sync-label">Sincronizado</span></span>
       <button class="ghost-btn" onclick="openHistory()" title="Ver tudo que você já publicou">⏱ Histórico</button>
+      <button class="ghost-btn" onclick="openTrash()" title="Itens removidos">Lixeira</button>
     </div>
   </header>
 
@@ -1781,6 +1808,8 @@
           <button class="btn-secondary" onclick="openWeekHistory()" title="Ver semanas arquivadas">📚 Histórico de semanas</button>
         </div>
       </header>
+
+      <div class="dashboard-strip" id="dashboard-strip"></div>
 
       <div class="row-2">
         <div class="glass card-pad">
@@ -1871,6 +1900,7 @@
               <button data-cmd="hr"     title="Divisor">—</button>
               <span class="notes-sep"></span>
               <button data-cmd="pdf"    title="Anexar PDF">📎 PDF</button>
+              <button type="button" onclick="noteToTodayBlock()" title="Criar bloco hoje a partir desta nota">Criar bloco</button>
               <input type="file" id="notes-pdf-input" accept="application/pdf" style="display:none">
             </div>
             <div class="notes-content" contenteditable="true" data-placeholder="Comece a escrever ou cole conteúdo aqui..." id="notes-content"></div>
@@ -1987,6 +2017,23 @@
   </div>
 </div>
 
+<!-- ====== Busca global ====== -->
+<div class="modal-overlay" id="search-modal" onclick="if(event.target===this) closeSearch()">
+  <div class="modal">
+    <div class="modal-head"><div><h3>Resultados da busca</h3><p id="search-summary"></p></div><button class="modal-close" onclick="closeSearch()">×</button></div>
+    <div class="modal-body"><div class="search-results" id="search-results"></div></div>
+  </div>
+</div>
+
+<!-- ====== Lixeira ====== -->
+<div class="modal-overlay" id="trash-modal" onclick="if(event.target===this) closeTrash()">
+  <div class="modal">
+    <div class="modal-head"><div><h3>Lixeira</h3><p>Itens removidos podem ser recuperados por 30 dias.</p></div><button class="modal-close" onclick="closeTrash()">×</button></div>
+    <div class="modal-body"><div id="trash-list"></div></div>
+    <div class="modal-foot"><span class="hint" id="trash-count"></span><button class="btn-secondary" onclick="emptyTrash()">Esvaziar lixeira</button></div>
+  </div>
+</div>
+
 <!-- ====== History Modal ====== -->
 <div class="modal-overlay" id="history-modal" onclick="if(event.target===this) closeHistory()">
   <div class="modal">
@@ -2002,6 +2049,9 @@
     </div>
     <div class="modal-foot">
       <span class="hint" id="history-count">0 itens no histórico</span>
+      <button class="btn-secondary" onclick="exportBackup()">Exportar backup JSON</button>
+      <button class="btn-secondary" onclick="document.getElementById('backup-file').click()">Importar backup JSON</button>
+      <input id="backup-file" type="file" accept="application/json,.json" hidden onchange="importBackupFile(this.files[0]);this.value=''">
       <button class="btn-secondary" onclick="clearHistory()">Limpar histórico</button>
     </div>
   </div>
@@ -2041,7 +2091,8 @@ const DEFAULTS = {
     activeId: null,
     expandedIds: []
   },
-  weekArchive: []
+  weekArchive: [],
+  trash: []
 };
 
 function isoOffset(days) {
@@ -2093,6 +2144,17 @@ let sb = null;
 let saveTimer = null;
 let isApplyingRemote = false;
 let lastSyncedAt = null;
+let writeInFlight = false;
+let writeQueued = false;
+const SNAPSHOT_KEY = KEY + '-snapshots-v2';
+const DEVICE_KEY = KEY + '-device-id';
+const SCHEMA_VERSION = 2;
+const MAX_SNAPSHOTS = 30;
+const deviceId = (() => {
+  let id = localStorage.getItem(DEVICE_KEY);
+  if (!id) { id = 'dev-' + crypto.randomUUID(); localStorage.setItem(DEVICE_KEY, id); }
+  return id;
+})();
 
 function buildInitialState(raw) {
   const s = raw ? deepMerge(structuredClone(DEFAULTS), raw) : structuredClone(DEFAULTS);
@@ -2107,6 +2169,8 @@ function buildInitialState(raw) {
   if (!s.history) s.history = [];
   if (!s.awaiting) s.awaiting = [];
   if (!s.focus) s.focus = ['', '', ''];
+  if (!s.trash) s.trash = [];
+  s.trash = s.trash.filter(x => !x.deletedAt || Date.now() - new Date(x.deletedAt).getTime() < 30 * 86400000);
   return s;
 }
 
@@ -2133,6 +2197,80 @@ function stripUi(s) {
   return rest;
 }
 
+function dataScore(value) {
+  const clean = stripUi(buildInitialState(value || null));
+  let score = 0;
+  const walk = v => {
+    if (Array.isArray(v)) { score += v.length * 8; v.forEach(walk); }
+    else if (v && typeof v === 'object') Object.entries(v).forEach(([k,x]) => { if (k !== '__meta') walk(x); });
+    else if (typeof v === 'string') score += v.trim().length;
+    else if (v !== null && v !== undefined && v !== false) score += 1;
+  };
+  walk(clean);
+  return score;
+}
+
+function metaOf(value) {
+  const m = value && value.__meta || {};
+  return {
+    schema: Number(m.schema) || 1,
+    revision: Number(m.revision) || 0,
+    updatedAt: m.updatedAt || '',
+    deviceId: m.deviceId || '',
+    score: Number(m.score) || dataScore(value)
+  };
+}
+
+function stamp(value, revision) {
+  value.__meta = {
+    schema: SCHEMA_VERSION,
+    revision: revision,
+    updatedAt: new Date().toISOString(),
+    deviceId,
+    score: dataScore(value)
+  };
+  return value;
+}
+
+function compareStates(a, b) {
+  const am = metaOf(a), bm = metaOf(b);
+  if (am.revision !== bm.revision) return am.revision - bm.revision;
+  if (am.score !== bm.score) return am.score - bm.score;
+  return String(am.updatedAt).localeCompare(String(bm.updatedAt));
+}
+
+function isSuspiciousRegression(next, current) {
+  if (!current) return false;
+  const n = metaOf(next), c = metaOf(current);
+  return n.score === 0 && c.score > 0 ||
+    (n.score < c.score * 0.65 && n.revision <= c.revision + 1);
+}
+
+function readSnapshots() {
+  try { return JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || '[]'); }
+  catch (_) { return []; }
+}
+
+function makeSnapshot(value, reason) {
+  if (!value || dataScore(value) === 0) return;
+  const snapshots = readSnapshots();
+  const serialized = JSON.stringify(stripUi(value));
+  if (snapshots[0] && snapshots[0].data === serialized) return;
+  snapshots.unshift({ at: new Date().toISOString(), reason, meta: metaOf(value), data: serialized });
+  try { localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshots.slice(0, MAX_SNAPSHOTS))); }
+  catch (_) {
+    try { localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshots.slice(0, 10))); } catch (_) {}
+  }
+}
+
+function persistLocal(reason) {
+  try {
+    const old = localStorage.getItem(KEY);
+    if (old) { try { makeSnapshot(JSON.parse(old), reason || 'antes da alteracao local'); } catch (_) {} }
+    localStorage.setItem(KEY, JSON.stringify(state));
+  } catch (e) { console.warn('localStorage indisponivel', e); }
+}
+
 function setSyncStatus(status) {
   const pill = document.getElementById('sync-pill');
   if (!pill) return;
@@ -2146,8 +2284,30 @@ function setSyncStatus(status) {
 }
 
 async function saveToCloud() {
-  if (!sb) return false;
+  if (!sb || writeInFlight) { writeQueued = !!sb; return false; }
+  writeInFlight = true;
   try {
+    const { data: currentRow, error: readError } = await sb.from('rotina_state')
+      .select('data, updated_at').eq('key', ROW_KEY).maybeSingle();
+    if (readError) throw readError;
+    const remote = currentRow && currentRow.data;
+    if (remote && compareStates(remote, state) > 0) {
+      makeSnapshot(state, 'conflito: local preservado');
+      applyRemote(remote, currentRow.updated_at, 'nuvem mais recente');
+      setSyncStatus('synced');
+      return true;
+    }
+    if (remote && isSuspiciousRegression(state, remote)) {
+      makeSnapshot(state, 'envio bloqueado: regressao suspeita');
+      makeSnapshot(remote, 'copia da nuvem antes do bloqueio');
+      applyRemote(remote, currentRow.updated_at, 'regressao local bloqueada');
+      setSyncStatus('error');
+      console.warn('Envio bloqueado: o estado local era vazio ou muito menor que a nuvem.');
+      return false;
+    }
+    const nextRevision = Math.max(metaOf(state).revision, metaOf(remote).revision) + 1;
+    stamp(state, nextRevision);
+    persistLocal('antes de sincronizar');
     const payload = stripUi(state);
     const { data, error } = await sb
       .from('rotina_state')
@@ -2162,6 +2322,9 @@ async function saveToCloud() {
     console.warn('save exception', e);
     setSyncStatus('error');
     return false;
+  } finally {
+    writeInFlight = false;
+    if (writeQueued) { writeQueued = false; setTimeout(saveToCloud, 50); }
   }
 }
 
@@ -2185,7 +2348,8 @@ async function loadFromCloud() {
 
 function save() {
   if (isApplyingRemote) return;
-  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e) {}
+  stamp(state, metaOf(state).revision + 1);
+  persistLocal('edicao local');
   if (!sb) return;
   setSyncStatus('saving');
   if (saveTimer) clearTimeout(saveTimer);
@@ -2195,7 +2359,26 @@ function save() {
   }, 600);
 }
 
+function applyRemote(remote, updatedAt, reason) {
+  if (!remote || isSuspiciousRegression(remote, state)) {
+    makeSnapshot(remote, 'remoto rejeitado: regressao suspeita');
+    console.warn('Atualizacao remota rejeitada por parecer vazia ou incompleta.');
+    return false;
+  }
+  isApplyingRemote = true;
+  makeSnapshot(state, 'antes de aplicar: ' + reason);
+  const prevUi = state.ui;
+  state = buildInitialState(remote);
+  state.ui = prevUi;
+  persistLocal(reason);
+  reRenderAll();
+  if (updatedAt) lastSyncedAt = updatedAt;
+  isApplyingRemote = false;
+  return true;
+}
+
 function reRenderAll() {
+  renderDashboard();
   renderFocus();
   renderAwaiting();
   renderTimeGrid();
@@ -2217,15 +2400,9 @@ function setupRealtime() {
         const newRow = payload.new || {};
         if (!newRow.data) return;
         if (newRow.updated_at && lastSyncedAt && newRow.updated_at === lastSyncedAt) return;
-        isApplyingRemote = true;
-        const prevUi = state.ui;
-        state = buildInitialState(newRow.data);
-        state.ui = prevUi;
-        try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e) {}
-        reRenderAll();
-        if (newRow.updated_at) lastSyncedAt = newRow.updated_at;
-        isApplyingRemote = false;
-        setSyncStatus('synced');
+        const cmp = compareStates(newRow.data, state);
+        if (cmp > 0 && applyRemote(newRow.data, newRow.updated_at, 'realtime')) setSyncStatus('synced');
+        else if (cmp < 0) { setSyncStatus('saving'); saveToCloud(); }
       }
     )
     .subscribe();
@@ -2245,11 +2422,9 @@ async function bootCloud() {
   setSyncStatus('loading');
   const cloud = await loadFromCloud();
   if (cloud) {
-    const prevUi = state.ui;
-    state = buildInitialState(cloud);
-    state.ui = prevUi;
-    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e) {}
-    reRenderAll();
+    const cmp = compareStates(cloud, state);
+    if (cmp > 0 && !isSuspiciousRegression(cloud, state)) applyRemote(cloud, lastSyncedAt, 'inicializacao');
+    else if (cmp < 0 || isSuspiciousRegression(cloud, state)) await saveToCloud();
     setSyncStatus('synced');
   } else {
     const ok = await saveToCloud();
@@ -2257,7 +2432,12 @@ async function bootCloud() {
   }
   setupRealtime();
   window.addEventListener('offline', () => setSyncStatus('offline'));
-  window.addEventListener('online',  () => { setSyncStatus('saving'); saveToCloud(); });
+  window.addEventListener('online', async () => {
+    setSyncStatus('loading');
+    const remote = await loadFromCloud();
+    if (remote && compareStates(remote, state) > 0) applyRemote(remote, lastSyncedAt, 'reconexao');
+    else { setSyncStatus('saving'); await saveToCloud(); }
+  });
 }
 
 function uid() { return Math.random().toString(36).slice(2, 9); }
@@ -2286,6 +2466,87 @@ function bootView() {
   document.querySelectorAll('.view').forEach(s => s.classList.toggle('active', s.id === 'view-' + v));
 }
 
+const inputSaveTimers = new WeakMap();
+function autosaveEditable(el, commit, delay = 450) {
+  el.addEventListener('input', () => {
+    setSyncStatus('saving');
+    clearTimeout(inputSaveTimers.get(el));
+    inputSaveTimers.set(el, setTimeout(() => { commit(); inputSaveTimers.delete(el); }, delay));
+  });
+  el.addEventListener('blur', () => {
+    clearTimeout(inputSaveTimers.get(el));
+    inputSaveTimers.delete(el);
+    commit();
+  });
+}
+
+function renderDashboard() {
+  const wrap = document.getElementById('dashboard-strip');
+  if (!wrap) return;
+  const blocks = Object.values(state.timeBlocks || {}).flat().length;
+  const overdue = (state.content.items || []).filter(x => x.date && x.date < isoOffset(0) && x.status !== 'publicado').length;
+  const waiting = (state.awaiting || []).length;
+  const upcoming = (state.content.items || []).filter(x => x.status !== 'publicado').length;
+  wrap.innerHTML = [
+    [blocks, 'blocos nesta semana'], [waiting, 'itens aguardando'], [upcoming, 'conteúdos em andamento'], [overdue, 'conteúdos atrasados']
+  ].map(([n,l]) => `<div class="dash-stat"><strong>${n}</strong><span>${l}</span></div>`).join('');
+}
+
+function goToResult(type, id) {
+  closeSearch();
+  const view = type === 'note' ? 'notes' : type === 'content' ? 'social' : 'time';
+  document.querySelector(`#nav button[data-view="${view}"]`).click();
+  if (type === 'note') selectNotePage(id);
+  setTimeout(() => {
+    const target = document.querySelector(`[data-id="${id}"],[data-block-id="${id}"]`);
+    if (target) { target.scrollIntoView({behavior:'smooth',block:'center'}); target.animate([{outline:'3px solid var(--accent)'},{outline:'0 solid transparent'}],{duration:1400}); }
+  }, 80);
+}
+
+function runGlobalSearch(query) {
+  const q = String(query || '').trim().toLocaleLowerCase('pt-BR');
+  if (q.length < 2) return;
+  const results = [];
+  (state.focus || []).forEach((text,i) => { if ((text || '').toLocaleLowerCase('pt-BR').includes(q)) results.push({type:'focus',id:String(i),label:text,where:'Foco da semana'}); });
+  (state.notes.pages || []).forEach(p => { const text = `${p.title} ${String(p.content || '').replace(/<[^>]+>/g,' ')}`; if (text.toLocaleLowerCase('pt-BR').includes(q)) results.push({type:'note',id:p.id,label:p.title || 'Nota sem título',where:'Notas'}); });
+  Object.entries(state.timeBlocks || {}).forEach(([slot,items]) => items.forEach(b => { if ((b.text || '').toLocaleLowerCase('pt-BR').includes(q)) results.push({type:'block',id:b.id,label:b.text,where:'Agenda · '+slot}); }));
+  (state.content.items || []).forEach(c => { if (`${c.title} ${c.note}`.toLocaleLowerCase('pt-BR').includes(q)) results.push({type:'content',id:c.id,label:c.title,where:'Redes · '+CONTENT_STATUS_LABELS[normalizeContentStatus(c.status)].label}); });
+  (state.awaiting || []).forEach((a,i) => { if (`${a.who} ${a.what}`.toLocaleLowerCase('pt-BR').includes(q)) results.push({type:'awaiting',id:String(i),label:`${a.who}: ${a.what}`,where:'Aguardando'}); });
+  document.getElementById('search-summary').textContent = `${results.length} resultado(s) para “${query}”`;
+  document.getElementById('search-results').innerHTML = results.length ? results.slice(0,100).map(r => `<button class="search-result" onclick="goToResult('${r.type}','${r.id}')"><small>${escapeHtml(r.where)}</small>${escapeHtml(r.label)}</button>`).join('') : '<div class="history-empty">Nada encontrado.</div>';
+  document.getElementById('search-modal').classList.add('open');
+}
+function closeSearch() { document.getElementById('search-modal').classList.remove('open'); }
+document.getElementById('global-search').addEventListener('keydown', e => { if (e.key === 'Enter') runGlobalSearch(e.currentTarget.value); });
+
+function trashItem(type, data, context, label) {
+  state.trash.unshift({ id: crypto.randomUUID(), type, data: structuredClone(data), context: structuredClone(context || {}), label: label || 'Item', deletedAt: new Date().toISOString() });
+}
+function openTrash() { renderTrash(); document.getElementById('trash-modal').classList.add('open'); }
+function closeTrash() { document.getElementById('trash-modal').classList.remove('open'); }
+function renderTrash() {
+  const list = document.getElementById('trash-list');
+  document.getElementById('trash-count').textContent = `${state.trash.length} item(ns)`;
+  list.innerHTML = state.trash.length ? state.trash.map(x => `<div class="trash-item"><div class="trash-label"><strong>${escapeHtml(x.label)}</strong><small>${escapeHtml(x.type)} · ${new Date(x.deletedAt).toLocaleDateString('pt-BR')}</small></div><button class="btn-secondary" onclick="restoreTrash('${x.id}')">Restaurar</button></div>`).join('') : '<div class="history-empty">A lixeira está vazia.</div>';
+}
+function restoreTrash(id) {
+  const i = state.trash.findIndex(x => x.id === id); if (i < 0) return;
+  const x = state.trash[i];
+  if (x.type === 'bloco') { const key = x.context.key || todayId()+'-am'; (state.timeBlocks[key] ||= []).push(x.data); }
+  else if (x.type === 'conteúdo') state.content.items.push(x.data);
+  else if (x.type === 'aguardando') state.awaiting.push(x.data);
+  else if (x.type === 'nota') state.notes.pages.push(...x.data);
+  state.trash.splice(i,1); save(); reRenderAll(); renderDashboard(); renderTrash();
+}
+function emptyTrash() { if (!state.trash.length || !confirm('Apagar definitivamente todos os itens da lixeira?')) return; state.trash=[]; save(); renderTrash(); }
+
+function noteToTodayBlock() {
+  const page = state.notes.activeId ? getNoteById(state.notes.activeId) : null; if (!page) return;
+  const key = todayId() + '-am';
+  (state.timeBlocks[key] ||= []).push({id:uid(),text:page.title || 'Nota sem título',color:'lilac',noteId:page.id});
+  save(); renderDashboard(); alert('Bloco criado na manhã de hoje.');
+}
+
 // ============================================================
 // TIME BLOCKING (Início)
 // ============================================================
@@ -2300,7 +2561,7 @@ function renderFocus() {
       <div class="focus-text" contenteditable="true" data-placeholder="o que importa mais ${['agora','depois','por último'][i]||''}">${escapeHtml(txt)}</div>
     `;
     const ed = row.querySelector('.focus-text');
-    ed.addEventListener('blur', () => { state.focus[i] = ed.innerText.trim(); save(); });
+    autosaveEditable(ed, () => { state.focus[i] = ed.innerText.trim(); save(); });
     wrap.appendChild(row);
   });
 }
@@ -2317,9 +2578,9 @@ function renderAwaiting() {
       <button class="x" title="remover">×</button>
     `;
     const [who, what, x] = row.children;
-    who.addEventListener('blur', () => { it.who = who.innerText.trim(); save(); });
-    what.addEventListener('blur', () => { it.what = what.innerText.trim(); save(); });
-    x.addEventListener('click', () => { state.awaiting.splice(idx,1); save(); renderAwaiting(); });
+    autosaveEditable(who, () => { it.who = who.innerText.trim(); save(); });
+    autosaveEditable(what, () => { it.what = what.innerText.trim(); save(); });
+    x.addEventListener('click', () => { trashItem('aguardando', it, {}, `${it.who}: ${it.what}`); state.awaiting.splice(idx,1); save(); renderAwaiting(); renderDashboard(); });
     wrap.appendChild(row);
   });
 }
@@ -2335,6 +2596,7 @@ function renderTimeGrid() {
   const isMobile = window.innerWidth <= 760;
   if (isMobile) { renderTimeGridMobile(grid); }
   else          { renderTimeGridDesktop(grid); }
+  renderDashboard();
 }
 function renderTimeGridDesktop(grid) {
   grid.classList.remove('mobile');
@@ -2451,7 +2713,7 @@ function makeBlock(key, b) {
   el.textContent = b.text;
   el.style.paddingRight = '28px';
   el.style.paddingLeft = '22px';
-  el.addEventListener('blur', () => {
+  autosaveEditable(el, () => {
     b.text = el.innerText.trim();
     save();
   });
@@ -2498,9 +2760,10 @@ function makeBlock(key, b) {
     e.preventDefault();
     e.stopPropagation();
     const idx = state.timeBlocks[key].findIndex(x => x.id === b.id);
-    if (idx > -1) state.timeBlocks[key].splice(idx, 1);
+    if (idx > -1) { trashItem('bloco', b, {key}, b.text); state.timeBlocks[key].splice(idx, 1); }
     save();
     renderTimeGrid();
+    renderDashboard();
   });
 
   grip.addEventListener('dragstart', (e) => {
@@ -2622,6 +2885,7 @@ function renderContentKanban() {
     });
     wrap.appendChild(col);
   });
+  renderDashboard();
 }
 function makeContentCard(t) {
   const c = document.createElement('div');
@@ -2646,8 +2910,8 @@ function makeContentCard(t) {
   const title = c.querySelector('.title');
   const note  = c.querySelector('.note');
   const dateInput = c.querySelector('.kcard-date input');
-  title.addEventListener('blur', () => { t.title = title.innerText.trim() || 'sem título'; save(); });
-  note.addEventListener('blur',  () => { t.note  = note.innerText.trim(); save(); });
+  autosaveEditable(title, () => { t.title = title.innerText.trim() || 'sem título'; save(); });
+  autosaveEditable(note,  () => { t.note  = note.innerText.trim(); save(); });
   dateInput.addEventListener('change', () => {
     t.date = dateInput.value || '';
     save();
@@ -2663,8 +2927,9 @@ function makeContentCard(t) {
   });
   c.querySelector('[data-act="del"]').addEventListener('click', () => {
     if (confirm('Remover este card?')) {
+      trashItem('conteúdo', t, {}, t.title);
       state.content.items = state.content.items.filter(x => x.id !== t.id);
-      save(); renderContentKanban();
+      save(); renderContentKanban(); renderDashboard();
     }
   });
   c.addEventListener('dragstart', e => {
@@ -3282,6 +3547,7 @@ function deleteNotePage(id) {
       }
     });
   }
+  trashItem('nota', state.notes.pages.filter(p => toRemove.has(p.id)), {}, label);
   state.notes.pages = state.notes.pages.filter(p => !toRemove.has(p.id));
   if (toRemove.has(state.notes.activeId)) state.notes.activeId = null;
   save();
@@ -3708,6 +3974,48 @@ function bindNotesEditor() {
 // ============================================================
 // UTILS
 // ============================================================
+function exportBackup() {
+  const backup = {
+    format: 'rotina-zapizi-backup',
+    version: SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    state: stripUi(state),
+    snapshots: readSnapshots().map(s => ({ ...s, data: JSON.parse(s.data) }))
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `zapizi-backup-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function importBackupFile(file) {
+  if (!file) return;
+  try {
+    const parsed = JSON.parse(await file.text());
+    const incoming = parsed && parsed.format === 'rotina-zapizi-backup' ? parsed.state : parsed;
+    if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) throw new Error('Formato invalido');
+    const normalized = buildInitialState(incoming);
+    if (dataScore(normalized) === 0 && dataScore(state) > 0) throw new Error('Backup vazio recusado');
+    if (!confirm('Importar este backup? O estado atual sera preservado em um snapshot.')) return;
+    makeSnapshot(state, 'antes da importacao manual');
+    const prevUi = state.ui;
+    state = normalized;
+    state.ui = prevUi;
+    stamp(state, Math.max(metaOf(state).revision, metaOf(incoming).revision) + 1);
+    persistLocal('backup importado');
+    reRenderAll();
+    setSyncStatus(sb ? 'saving' : 'offline');
+    if (sb) await saveToCloud();
+    alert('Backup importado com sucesso.');
+  } catch (e) {
+    console.warn('Falha ao importar backup', e);
+    alert('Nao foi possivel importar: arquivo invalido ou vazio.');
+  }
+}
+
 function escapeHtml(s) {
   if (!s) return '';
   return String(s)
@@ -3741,3 +4049,4 @@ bootCloud();
 </script>
 </body>
 </html>
+
