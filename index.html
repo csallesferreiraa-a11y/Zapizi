@@ -2888,17 +2888,33 @@ function noteToTodayBlock() {
 // ============================================================
 let pendingFocusIndex=null;
 function focusSelectableTasks(){
-  const projectTasks=(state.projects||[]).filter(p=>p.nextAction).map(p=>({id:`project:${p.id}`,source:'project',title:p.nextAction,projectId:p.id,date:p.due||'',kind:'task'}));
   const demands=(state.demands||[]).filter(x=>!x.done).map(x=>({...x,source:'demand'}));
   const posts=(state.content?.items||[]).filter(x=>x.status!=='publicado').map(x=>({id:x.id,source:'content',title:x.title,projectId:'p-instagram',date:x.date||'',kind:'content'}));
   const legacy=legacyBlocksAsDemands();
-  return [...projectTasks,...demands,...posts,...legacy].filter(x=>x.title);
+  const seen=new Set();
+  return [...demands,...posts,...legacy].filter(x=>{const key=`${x.source}:${x.id}`;if(!x.title||seen.has(key))return false;seen.add(key);return true;});
 }
 function getFocusTask(ref){if(!ref)return null;return focusSelectableTasks().find(x=>String(x.id)===String(ref.id)&&x.source===(ref.source||'demand'))||null;}
+function synchronizeFocusLinks(){
+  const tasks=focusSelectableTasks();let changed=false;
+  while(state.focus.length<3)state.focus.push('');while(state.focusLinks.length<3)state.focusLinks.push(null);
+  state.focusLinks.slice(0,3).forEach((ref,i)=>{
+    if(!ref)return;
+    let task=tasks.find(x=>String(x.id)===String(ref.id)&&x.source===(ref.source||'demand'));
+    if(!task&&ref.source==='project'){
+      const projectId=String(ref.id||'').replace(/^project:/,''),project=(state.projects||[]).find(p=>String(p.id)===projectId);
+      task=tasks.find(x=>x.source==='demand'&&x.projectId===projectId&&x.title===project?.nextAction)||tasks.find(x=>x.source==='demand'&&x.projectId===projectId);
+      if(task){state.focusLinks[i]={id:task.id,source:task.source};changed=true;}
+    }
+    if(!task){state.focusLinks[i]=null;state.focus[i]='';changed=true;return;}
+    if(state.focus[i]!==task.title){state.focus[i]=task.title;changed=true;}
+  });
+  if(changed)save();
+}
 function focusTaskMeta(task){const project=(state.projects||[]).find(p=>p.id===task?.projectId),due=task?.date||project?.due||'',status=project?.statusLabel||(task?.kind==='content'?'Conteúdo':'Planejado'),progress=Math.max(0,Math.min(100,Number(project?.progress)||0));return {project,due,status,progress};}
 function renderFocus() {
   const wrap=document.getElementById('focus-list');if(!wrap)return;wrap.innerHTML='';
-  while(state.focus.length<3)state.focus.push('');while(state.focusLinks.length<3)state.focusLinks.push(null);
+  synchronizeFocusLinks();
   state.focus.slice(0,3).forEach((txt,i)=>{
     const task=getFocusTask(state.focusLinks[i]),meta=task?focusTaskMeta(task):null,visual=['#ef4f91','#ff8619','#8a5ce6'][i%3],title=task?.title||txt||`Escolher foco ${i+1}`,projectName=meta?.project?.title||(task?'Sem projeto':'Clique para selecionar uma tarefa'),due=meta?.due?`Vence ${parseISODate(meta.due).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}).replace('.','')}`:'Sem prazo',progress=meta?.progress||0;
     const row=document.createElement('div');row.className='focus-item selectable';row.setAttribute('role','button');row.setAttribute('tabindex','0');
@@ -3217,7 +3233,7 @@ function renderContentKanban() {
     add.addEventListener('click', () => {
       state.content.items.push({ id: uid(), title: 'novo card', note: '', status, date: '' });
       save();
-      renderContentKanban();
+      renderContentKanban(); renderFocus();
     });
     col.appendChild(add);
 
@@ -3232,7 +3248,7 @@ function renderContentKanban() {
         const wasDone = t.status === 'publicado';
         t.status = status;
         handleContentStatusChange(t, wasDone);
-        save(); renderContentKanban();
+        save(); renderContentKanban(); renderFocus();
       }
     });
     wrap.appendChild(col);
@@ -3262,12 +3278,12 @@ function makeContentCard(t) {
   const title = c.querySelector('.title');
   const note  = c.querySelector('.note');
   const dateInput = c.querySelector('.kcard-date input');
-  autosaveEditable(title, () => { t.title = title.innerText.trim() || 'sem título'; save(); });
+  autosaveEditable(title, () => { t.title = title.innerText.trim() || 'sem título'; save(); renderFocus(); });
   autosaveEditable(note,  () => { t.note  = note.innerText.trim(); save(); });
   dateInput.addEventListener('change', () => {
     t.date = dateInput.value || '';
     save();
-    renderContentKanban();
+    renderContentKanban(); renderAgenda(); renderHomeCalendar(); renderFocus();
   });
   c.querySelector('[data-act="next"]').addEventListener('click', () => {
     const cur = normalizeContentStatus(t.status);
@@ -3275,13 +3291,13 @@ function makeContentCard(t) {
     const wasDone = t.status === 'publicado';
     t.status = CONTENT_STATUS_ORDER[(i+1) % CONTENT_STATUS_ORDER.length];
     handleContentStatusChange(t, wasDone);
-    save(); renderContentKanban();
+    save(); renderContentKanban(); renderAgenda(); renderHomeCalendar(); renderFocus();
   });
   c.querySelector('[data-act="del"]').addEventListener('click', () => {
     if (confirm('Remover este card?')) {
       trashItem('conteúdo', t, {}, t.title);
       state.content.items = state.content.items.filter(x => x.id !== t.id);
-      save(); renderContentKanban(); renderDashboard();
+      save(); renderContentKanban(); renderDashboard(); renderAgenda(); renderHomeCalendar(); renderFocus();
     }
   });
   c.addEventListener('dragstart', e => {
@@ -3545,12 +3561,14 @@ function archiveAndNewWeek() {
     weekStart: range.start,
     weekEnd: range.end,
     focus: structuredClone(state.focus || ['','','']),
+    focusLinks: structuredClone(state.focusLinks || [null,null,null]),
     awaiting: structuredClone(state.awaiting || []),
     timeBlocks: structuredClone(state.timeBlocks || {})
   };
   state.weekArchive = state.weekArchive || [];
   state.weekArchive.unshift(snapshot);
   state.focus = ['', '', ''];
+  state.focusLinks = [null, null, null];
   state.awaiting = [];
   state.timeBlocks = {
     'seg-am': freshAmBlocks(), 'seg-pm': [],
@@ -3636,11 +3654,13 @@ function restoreWeek(id) {
     weekStart: range.start,
     weekEnd: range.end,
     focus: structuredClone(state.focus || ['','','']),
+    focusLinks: structuredClone(state.focusLinks || [null,null,null]),
     awaiting: structuredClone(state.awaiting || []),
     timeBlocks: structuredClone(state.timeBlocks || {})
   };
   state.weekArchive.unshift(snapshot);
   state.focus = structuredClone(w.focus || ['','','']);
+  state.focusLinks = structuredClone(w.focusLinks || [null,null,null]);
   state.awaiting = structuredClone(w.awaiting || []);
   state.timeBlocks = structuredClone(w.timeBlocks || {});
   state.weekArchive = state.weekArchive.filter(x => x.id !== id);
