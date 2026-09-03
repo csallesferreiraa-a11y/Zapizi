@@ -2277,8 +2277,89 @@ const V3_PROJECT_DEFAULTS = [
   { id:'p-trafego', title:'Tráfego pago', area:'trafego', status:'active', statusLabel:'Transição', due:'', progress:15, stepsDone:1, stepsTotal:6, nextAction:'Conferir acessos das campanhas', dependency:'', color:'peach' },
   { id:'p-instagram', title:'Instagram e conteúdo', area:'conteudo', status:'active', statusLabel:'Em produção', due:'2026-09-15', progress:45, stepsDone:3, stepsTotal:7, nextAction:'Finalizar calendário editorial', dependency:'', color:'lilac' },
   { id:'p-base', title:'Base de conhecimento', area:'interno', status:'active', statusLabel:'Planejamento', due:'', progress:25, stepsDone:1, stepsTotal:4, nextAction:'Conversar com Silas e Germano', dependency:'', color:'mint' },
-  { id:'p-video', title:'Produção audiovisual', area:'video', status:'waiting', statusLabel:'Aguardando', due:'', progress:30, stepsDone:2, stepsTotal:6, nextAction:'Validar orçamento com Bruno', dependency:'Bruno', color:'blue' }
+  { id:'p-video', title:'Produção audiovisual', area:'video', status:'waiting', statusLabel:'Aguardando', due:'', progress:0, stepsDone:0, stepsTotal:8, nextAction:'Pedir orçamento ao Gladiston', dependency:'Gladiston', color:'blue' },
+  { id:'p-propostas', title:'Propostas comerciais', area:'comercial', status:'paused', statusLabel:'Para depois', due:'', progress:70, stepsDone:0, stepsTotal:5, nextAction:'Refinar versões específicas por vertical', dependency:'', color:'peach' },
+  { id:'p-onepagers', title:'One-pagers', area:'comercial', status:'paused', statusLabel:'Planejado', due:'', progress:10, stepsDone:0, stepsTotal:10, nextAction:'Atualizar o one-page comercial', dependency:'', color:'pink' },
+  { id:'p-linkedin', title:'LinkedIn', area:'conteudo', status:'paused', statusLabel:'Planejado', due:'', progress:0, stepsDone:0, stepsTotal:4, nextAction:'Revisar a página atual', dependency:'', color:'lilac' }
 ];
+
+const V3_ACTION_DEFAULTS = [
+  ['a-ap-01','p-apresentacoes','Retirar Zap Light de todos os materiais','2026-09-03','09:00'],
+  ['a-ap-02','p-apresentacoes','Substituir Zap Light por Zap Pro quando aplicável','2026-09-03','10:00'],
+  ['a-ap-03','p-apresentacoes','Remover a promessa de resposta em até 4 horas','2026-09-03','11:00'],
+  ['a-ap-04','p-apresentacoes','Padronizar nomenclaturas e conferir informações divergentes','2026-09-03','13:00'],
+  ['a-ap-05','p-apresentacoes','Resolver os pontos de interrogação da apresentação de Gruas','2026-09-03','14:00'],
+  ['a-ap-06','p-apresentacoes','Rever frases pouco claras e repetitivas','2026-09-03','15:00'],
+  ['a-ap-07','p-apresentacoes','Ajustar a ordem dos slides e reposicionar benefícios','2026-09-04','09:00'],
+  ['a-ap-08','p-apresentacoes','Melhorar o argumento para operadores que usam concorrentes','2026-09-04','10:00'],
+  ['a-ap-09','p-apresentacoes','Reforçar infraestrutura, estabilidade, suporte e relacionamento','2026-09-04','11:00'],
+  ['a-ap-10','p-apresentacoes','Simplificar termos técnicos e o discurso de suporte','2026-09-04','13:00'],
+  ['a-ap-11','p-apresentacoes','Validar valores, equipamentos e estados atendidos','2026-09-04','14:00'],
+  ['a-ap-12','p-apresentacoes','Avaliar case ou depoimento para Gruas','2026-09-04','15:00'],
+  ['a-ap-13','p-apresentacoes','Fechar a apresentação-base de Gruas','2026-09-04','16:00'],
+  ['a-ap-14','p-apresentacoes','Replicar a estrutura para as demais verticais','2026-09-08','09:00'],
+  ['a-ap-15','p-apresentacoes','Adaptar dores, benefícios e argumento por vertical','2026-09-08','11:00'],
+  ['a-ap-16','p-apresentacoes','Inserir cases específicos quando existirem','2026-09-08','14:00'],
+  ['a-ap-17','p-apresentacoes','Fazer a revisão final de todas as apresentações','2026-09-08','16:00'],
+  ['a-ap-18','p-apresentacoes','Enviar apresentações para Alejandro e Silas','2026-09-09','09:00'],
+  ['a-ap-19','p-apresentacoes','Consolidar feedback e aplicar ajustes finais','','09:00'],
+  ['a-tr-01','p-trafego','Garantir acessos ao Google Ads e Meta Ads','2026-09-03','16:00'],
+  ['a-tr-02','p-trafego','Mapear campanhas ativas, públicos, criativos e orçamento','','09:00'],
+  ['a-tr-03','p-trafego','Mapear indicadores e rotina de otimização da agência','','09:00'],
+  ['a-tr-04','p-trafego','Registrar tudo que hoje depende da agência','','09:00'],
+  ['a-tr-05','p-trafego','Acompanhar o handover com Abdiel durante os 30 dias','','09:00'],
+  ['a-tr-06','p-trafego','Montar shortlist de cursos de tráfego pago','2026-09-03','17:00'],
+  ['a-tr-07','p-trafego','Apresentar opções de curso ao gestor','','09:00'],
+  ['a-tr-08','p-trafego','Escolher o curso de capacitação','','09:00'],
+  ['a-tr-09','p-trafego','Estudar Google Ads com as campanhas reais da Zapizi','2026-09-04','15:00'],
+  ['a-tr-10','p-trafego','Estudar Meta Ads com as campanhas reais da Zapizi','','09:00'],
+  ['a-tr-11','p-trafego','Registrar dúvidas e levar para Abdiel','','09:00'],
+  ['a-tr-12','p-trafego','Criar rotina própria de análise e otimização','','09:00'],
+  ['a-in-01','p-instagram','Refazer conteúdo de Zap Pro','','09:00'],
+  ['a-in-02','p-instagram','Refazer conteúdo de POS','','09:00'],
+  ['a-in-03','p-instagram','Atualizar principais benefícios e painel de gestão','','09:00'],
+  ['a-in-04','p-instagram','Atualizar contato e finalizar segmentos','','09:00'],
+  ['a-in-05','p-instagram','Finalizar layouts dos posts atuais','','09:00'],
+  ['a-in-06','p-instagram','Organizar a sequência narrativa do feed','','09:00'],
+  ['a-in-07','p-instagram','Criar calendário editorial de feed e stories','','09:00'],
+  ['a-in-08','p-instagram','Planejar stories para alimentar os destaques','','09:00'],
+  ['a-in-09','p-instagram','Criar conteúdos sobre telemetria, dados, gestão e alertas','','09:00'],
+  ['a-in-10','p-instagram','Aplicar a linha rápido, fácil, intuitivo e surpreendentemente simples','','09:00'],
+  ['a-ba-01','p-base','Conversar com Silas','','09:00'],
+  ['a-ba-02','p-base','Conversar com Germano','','09:00'],
+  ['a-ba-03','p-base','Levantar vídeos e tutoriais existentes','','09:00'],
+  ['a-ba-04','p-base','Mapear as principais dúvidas recorrentes do suporte','','09:00'],
+  ['a-ba-05','p-base','Identificar os tutoriais prioritários','','09:00'],
+  ['a-ba-06','p-base','Definir onde a base de conhecimento ficará','','09:00'],
+  ['a-ba-07','p-base','Criar categorias e arquitetura da base','','09:00'],
+  ['a-ba-08','p-base','Definir padrão, duração e roteiro-base dos vídeos','','09:00'],
+  ['a-ba-09','p-base','Definir padrão visual e formatos de captura','','09:00'],
+  ['a-ba-10','p-base','Criar lista geral dos 40–50 tutoriais','','09:00'],
+  ['a-ba-11','p-base','Produzir e validar um lote piloto','','09:00'],
+  ['a-ba-12','p-base','Escalar a produção dos tutoriais','','09:00'],
+  ['a-vi-01','p-video','Pedir orçamento ao Gladiston','','09:00'],
+  ['a-vi-02','p-video','Avaliar custo de equipamentos e miniestúdio','','09:00'],
+  ['a-vi-03','p-video','Definir iluminação, microfone, câmera e suportes','','09:00'],
+  ['a-vi-04','p-video','Planejar gravações em operações reais','','09:00'],
+  ['a-vi-05','p-video','Mapear cenários: Grua, Arcade, Café e Vending','','09:00'],
+  ['a-vi-06','p-video','Mapear cenários: Sinuca, Lava-jato e outras operações','','09:00'],
+  ['a-vi-07','p-video','Criar banco de conteúdo real da Zapizi','','09:00'],
+  ['a-pr-01','p-propostas','Manter proposta geral para autosserviço','','09:00'],
+  ['a-pr-02','p-propostas','Manter versões específicas por vertical','','09:00'],
+  ['a-pr-03','p-propostas','Manter versão direta para uso comercial','','09:00'],
+  ['a-pr-04','p-propostas','Refinar versões específicas por segmento','','09:00'],
+  ['a-pr-05','p-propostas','Aprofundar benefícios próprios de cada vertical','','09:00'],
+  ['a-on-01','p-onepagers','Retirar Zap Light do one-page comercial','','09:00'],
+  ['a-on-02','p-onepagers','Ajustar o one-page comercial para leitura no celular','','09:00'],
+  ['a-on-03','p-onepagers','Conferir produtos e dados com a apresentação','','09:00'],
+  ['a-on-04','p-onepagers','Preparar versão em PDF ou imagem para WhatsApp','','09:00'],
+  ['a-on-05','p-onepagers','Definir roteiro do one-page institucional','','09:00'],
+  ['a-on-06','p-onepagers','Apresentar história, atuação, soluções e posicionamento','','09:00'],
+  ['a-li-01','p-linkedin','Revisar página e perfil atuais','','09:00'],
+  ['a-li-02','p-linkedin','Atualizar identidade e informações','','09:00'],
+  ['a-li-03','p-linkedin','Definir conteúdos do Instagram que serão adaptados','','09:00'],
+  ['a-li-04','p-linkedin','Criar calendário de publicações','','09:00']
+].map(([id,projectId,title,date,time])=>({id,projectId,title,date,time,kind:'task',notes:'',done:false}));
 
 function isoOffset(days) {
   const d = new Date();
@@ -2363,6 +2444,16 @@ function buildInitialState(raw) {
   if (!Array.isArray(s.routines)) s.routines = [];
   if (!Array.isArray(s.backlog)) s.backlog = [];
   if (!s.v3) s.v3 = { agendaMode:'week', agendaDate:isoOffset(0), selectedDate:isoOffset(0), projectStatus:'active', projectArea:'all' };
+  V3_PROJECT_DEFAULTS.forEach(project=>{if(!s.projects.some(x=>x.id===project.id))s.projects.push(structuredClone(project));});
+  V3_ACTION_DEFAULTS.forEach(action=>{const duplicate=s.demands.some(x=>x.projectId===action.projectId&&String(x.title||'').trim().toLocaleLowerCase('pt-BR')===action.title.toLocaleLowerCase('pt-BR'));if(!duplicate)s.demands.push(structuredClone(action));});
+  [
+    ['Abdiel','Finalização e disparo da pesquisa de satisfação',''],
+    ['Abdiel / agência','Acessos e informações para o handover de tráfego','p-trafego'],
+    ['Alejandro e Silas','Revisão das apresentações após o envio','p-apresentacoes'],
+    ['Silas e Germano','Informações para o diagnóstico da base de conhecimento','p-base'],
+    ['Gladiston','Orçamento e possibilidades de produção audiovisual','p-video'],
+    ['Comercial','Validação de dados, cases e depoimentos por vertical','p-apresentacoes']
+  ].forEach(([who,what,projectId])=>{if(!s.awaiting.some(x=>String(x.what||'').toLocaleLowerCase('pt-BR')===what.toLocaleLowerCase('pt-BR')))s.awaiting.push({id:uid(),who,what,since:isoOffset(0),projectId});});
   s.notes.pages.forEach(p => { if (p.projectId === undefined) p.projectId = ''; if (!Array.isArray(p.demandIds)) p.demandIds = []; });
   if (IS_SAFE_PREVIEW && !(s.focus||[]).some(Boolean) && Object.values(s.timeBlocks||{}).flat().length === 0 && (s.demands||[]).length === 0) {
     const monday = startOfWeek(new Date());
