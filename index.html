@@ -3863,12 +3863,12 @@ body[data-theme="baunilha"] { --ui-accent:#a67b4e!important;--ui-accent-2:#d6b77
       <header class="new-page-head"><h2>Ajustes e personalização</h2><p>Escolha as cores e o espaçamento do seu espaço. Essas preferências sincronizam com seus dados.</p></header>
       <div class="settings-layout liquid-panel">
         <section class="settings-section"><h3>Aparência</h3><p>Escolha uma paleta para mudar o clima de todo o sistema.</p><div class="theme-options" role="group" aria-label="Paleta de cores">
-          <button type="button" class="theme-option" data-theme-choice="pessego"><span class="theme-swatch theme-peach"></span><strong>Blush &amp; lavanda</strong><small>Rosa suave e lilás claro</small></button>
           <button type="button" class="theme-option" data-theme-choice="lavanda"><span class="theme-swatch theme-lavender"></span><strong>Lavanda</strong><small>Lilás, névoa e branco</small></button>
           <button type="button" class="theme-option" data-theme-choice="salvia"><span class="theme-swatch theme-sage"></span><strong>Sálvia</strong><small>Verde suave e creme</small></button>
           <button type="button" class="theme-option" data-theme-choice="azul"><span class="theme-swatch theme-blue"></span><strong>Azul névoa</strong><small>Azul claro e areia</small></button>
           <button type="button" class="theme-option" data-theme-choice="baunilha"><span class="theme-swatch theme-vanilla"></span><strong>Baunilha</strong><small>Creme, pêssego e mel</small></button>
         </div></section>
+        <section class="settings-section"><h3>Wallpaper</h3><p>Escolha uma imagem para o fundo do seu espaço. Ela fica salva junto às suas preferências.</p><div class="wallpaper-controls"><label class="settings-action" for="wallpaper-file">＋ Escolher imagem</label><input id="wallpaper-file" type="file" accept="image/*" hidden><button class="settings-action wallpaper-remove" id="wallpaper-remove" type="button">Remover wallpaper</button><span id="wallpaper-status" aria-live="polite">Nenhum wallpaper escolhido</span></div></section>
         <section class="settings-section"><h3>Espaçamento</h3><p>Escolha quanto espaço deixar entre cartões e seções.</p><label class="settings-field" for="layout-density">Densidade do layout<select id="layout-density"><option value="comfortable">Confortável</option><option value="compact">Compacto</option></select></label></section>
         <section class="settings-section"><h3>Tipografia</h3><p>Escolha o estilo de letra para todas as telas.</p><label class="settings-field" for="layout-font">Fonte do sistema<select id="layout-font"><option value="dm-sans">DM Sans · limpa e leve</option><option value="bricolage">Bricolage · arredondada</option><option value="fraunces">Fraunces · editorial</option></select></label><div class="font-preview" id="font-preview">Uma rotina com a sua cara</div></section>
         <section class="settings-section"><h3>Seu nome</h3><p>Personalize a saudação da Home.</p><label class="settings-field" for="display-name">Como quer ser chamada?<input id="display-name" type="text" maxlength="40" placeholder="Seu nome"></label></section>
@@ -4088,7 +4088,7 @@ const DEFAULTS = {
   stickerLibrary: [],
   dailyCollages: {},
   hiddenStickerPresets: [],
-  appearance: { theme: 'pessego', density: 'comfortable', displayName: 'Carol', font: 'dm-sans' },
+  appearance: { theme: 'lavanda', density: 'comfortable', displayName: 'Carol', font: 'dm-sans', wallpaper: '' },
   focus: ['', '', ''],
   awaiting: [],
   timeBlocks: {
@@ -4287,8 +4287,9 @@ function buildInitialState(raw) {
     s.migrations.stickerLibraryV1 = true;
   }
   if (!s.appearance || typeof s.appearance !== 'object') s.appearance = structuredClone(DEFAULTS.appearance);
-  if (!['pessego','lavanda','salvia','azul','baunilha'].includes(s.appearance.theme)) s.appearance.theme = 'pessego';
-  if (!s.migrations.appearancePaletteOriginalV1) { s.appearance.theme = 'pessego'; s.migrations.appearancePaletteOriginalV1 = true; }
+  if (s.appearance.theme === 'pessego') s.appearance.theme = 'lavanda';
+  if (!['lavanda','salvia','azul','baunilha'].includes(s.appearance.theme)) s.appearance.theme = 'lavanda';
+  if (typeof s.appearance.wallpaper !== 'string') s.appearance.wallpaper = '';
   if (!['comfortable','compact'].includes(s.appearance.density)) s.appearance.density = 'comfortable';
   if (!['dm-sans','bricolage','fraunces'].includes(s.appearance.font)) s.appearance.font = 'dm-sans';
   if (!s.appearance.displayName) s.appearance.displayName = 'Carol';
@@ -6070,7 +6071,25 @@ h1.title { font-weight: 200; font-size: 40px; letter-spacing: -0.8px; line-heigh
 #view-notes .notes-mode-tabs { background:color-mix(in srgb,var(--ui-tint) 45%,white)!important; }
 #view-notes .notes-mode-tabs button.active { color:var(--ui-accent)!important; }
 #view-notes .note-item.active { background:color-mix(in srgb,var(--ui-tint) 75%,white)!important;color:var(--ui-accent)!important; }
-#view-notes .note-project-badge { color:var(--ui-accent)!important;background:color-mix(in srgb,var(--ui-tint) 80%,white)!important; }</style>
+#view-notes .note-project-badge { color:var(--ui-accent)!important;background:color-mix(in srgb,var(--ui-tint) 80%,white)!important; }/* Wallpaper pessoal e linhas bem discretas nos calendários. */
+body.has-wallpaper::after { background:linear-gradient(rgba(255,255,255,.34),rgba(255,255,255,.34)),var(--user-wallpaper) center center/cover fixed!important;opacity:.72!important; }
+.wallpaper-controls { display:flex;align-items:center;flex-wrap:wrap;gap:9px; }
+.wallpaper-controls .settings-action { display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:9px 14px;border:1px solid color-mix(in srgb,var(--ui-accent) 18%,white);border-radius:12px;background:color-mix(in srgb,var(--ui-tint) 62%,white);color:var(--ui-accent);font:600 12px var(--app-font,"DM Sans"),sans-serif;cursor:pointer; }
+.wallpaper-controls .settings-action:hover { background:var(--ui-tint); }
+.wallpaper-controls #wallpaper-status { color:var(--ink-3);font-size:12px; }
+#view-agenda.week-view .week-grid,#view-agenda.month-view .month-grid { border-color:color-mix(in srgb,var(--ui-accent) 5%,transparent)!important; }
+#view-agenda.week-view .week-grid .week-corner,#view-agenda.week-view .week-grid .week-day,#view-agenda.week-view .week-grid .time-label,#view-agenda.week-view .week-grid .time-cell { border-color:color-mix(in srgb,var(--ui-accent) 5%,transparent)!important; }
+#view-agenda.month-view .month-grid>strong,#view-agenda.month-view .month-grid>.month-blank,#view-agenda.month-view .month-grid>button { border-color:color-mix(in srgb,var(--ui-accent) 5%,transparent)!important; }/* Wallpaper: ocupa o fundo da tela inteira; os cartões ficam mais opacos para manter a leitura. */
+body.has-wallpaper::after { background:var(--user-wallpaper) center center/cover fixed!important;opacity:1!important; }
+body.has-wallpaper .liquid-panel,body.has-wallpaper .glass,body.has-wallpaper .glass-strong,body.has-wallpaper .notes-sidebar,body.has-wallpaper .notes-main,body.has-wallpaper .agenda-board,body.has-wallpaper .agenda-side,body.has-wallpaper .settings-layout { background:rgba(255,255,255,.91)!important;backdrop-filter:blur(18px)!important; }
+.wallpaper-controls { min-height:68px;padding:12px 14px;border:1px solid color-mix(in srgb,var(--ui-accent) 12%,white);border-radius:16px;background:color-mix(in srgb,var(--ui-tint) 34%,white); }
+.wallpaper-controls .settings-action { min-height:40px!important;padding:9px 16px!important;border:1px solid color-mix(in srgb,var(--ui-accent) 20%,white)!important;border-radius:13px!important;background:linear-gradient(135deg,color-mix(in srgb,var(--ui-accent) 9%,white),color-mix(in srgb,var(--ui-accent-2) 19%,white))!important;color:var(--ui-accent)!important;box-shadow:0 4px 12px color-mix(in srgb,var(--ui-accent) 8%,transparent);font-weight:650!important;transition:transform .16s ease,box-shadow .16s ease,background .16s ease; }
+.wallpaper-controls .settings-action:hover { transform:translateY(-1px);background:var(--ui-tint)!important;box-shadow:0 7px 16px color-mix(in srgb,var(--ui-accent) 12%,transparent); }
+.wallpaper-controls .wallpaper-remove { background:rgba(255,255,255,.82)!important;color:var(--ink-3)!important;box-shadow:none!important; }
+.wallpaper-controls .wallpaper-remove:hover { border-color:color-mix(in srgb,var(--ui-accent) 20%,white)!important;color:var(--ui-accent)!important; }
+.wallpaper-controls .wallpaper-remove[hidden] { display:none!important; }
+.wallpaper-controls #wallpaper-status { margin-left:auto;padding:7px 11px;border:1px solid color-mix(in srgb,var(--ui-accent) 10%,white);border-radius:999px;background:rgba(255,255,255,.72);color:var(--ink-3);font-size:11px; }
+@media(max-width:600px){.wallpaper-controls{align-items:stretch}.wallpaper-controls .settings-action{flex:1}.wallpaper-controls #wallpaper-status{flex-basis:100%;margin:2px 0 0;text-align:center}}</style>
 </head>
 <body>
 <div class="page">
@@ -6426,9 +6445,9 @@ function bindSlashMenu(){const menu=document.getElementById('slash-menu');if(!me
 function noteSelectionToDemand(){const selected=String(window.getSelection()?.toString()||'').trim();if(!selected)return;const page=state.notes.activeId&&getNoteById(state.notes.activeId);openQuickAdd('', '', page?.projectId||'');document.getElementById('quick-title').value=selected;const handler=()=>{const newest=state.demands[state.demands.length-1];if(page&&newest&&!page.demandIds.includes(newest.id)){page.demandIds.push(newest.id);save();renderNoteContext(page);}};document.getElementById('quick-form').addEventListener('submit',()=>setTimeout(handler,0),{once:true});}
 function bindV3Controls(){document.querySelectorAll('#agenda-tabs button').forEach(b=>b.addEventListener('click',()=>{state.v3.agendaMode=b.dataset.mode;state.v3.selectedDate=state.v3.agendaDate||isoOffset(0);save();renderAgenda();}));document.querySelectorAll('#project-status-tabs button').forEach(b=>{b.addEventListener('click',()=>{state.v3.projectStatus=b.dataset.status;save();renderProjects();});b.addEventListener('dragover',e=>{if(!draggedProjectId)return;e.preventDefault();b.classList.add('project-drop-target');});b.addEventListener('dragleave',()=>b.classList.remove('project-drop-target'));b.addEventListener('drop',e=>dropProjectOnStatus(e,b.dataset.status));});document.querySelectorAll('#notes-mode-tabs button').forEach(b=>b.addEventListener('click',()=>setNotesMode(b.dataset.notesMode)));document.getElementById('notes-search')?.addEventListener('input',e=>filterNotes(e.target.value));window.addEventListener('beforeunload',flushActiveNote);document.addEventListener('visibilitychange',()=>{if(document.hidden)flushActiveNote();});bindQuickAdd();bindProjectCreator();bindSlashMenu();}
 function setNotesMode(mode){document.querySelectorAll('#notes-mode-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.notesMode===mode));const panel=document.getElementById('notes-search-panel'),input=document.getElementById('notes-search');panel.hidden=mode!=='search';if(mode==='search'){input.focus();filterNotes(input.value);}else{if(input)input.value='';filterNotes('');}}
-function applyAppearance(){const prefs=state.appearance||{theme:'pessego',density:'comfortable',displayName:'Carol',font:'dm-sans'};document.body.dataset.theme=['pessego','lavanda','salvia','azul','baunilha'].includes(prefs.theme)?prefs.theme:'pessego';document.body.dataset.density=prefs.density==='compact'?'compact':'comfortable';const fonts={'dm-sans':'"DM Sans"',bricolage:'"Bricolage Grotesque"',fraunces:'"Fraunces"'};document.documentElement.style.setProperty('--app-font',fonts[prefs.font]||fonts['dm-sans']);const brandName=document.querySelector('.brand p');if(brandName)brandName.textContent=prefs.displayName||'Carol';}
-function renderAppearanceSettings(){const prefs=state.appearance||{};document.querySelectorAll('[data-theme-choice]').forEach(b=>{const selected=b.dataset.themeChoice===(prefs.theme||'pessego');b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected));});const density=document.getElementById('layout-density'),font=document.getElementById('layout-font'),preview=document.getElementById('font-preview'),name=document.getElementById('display-name');if(density)density.value=prefs.density||'comfortable';if(font)font.value=prefs.font||'dm-sans';if(preview)preview.style.fontFamily='var(--app-font),sans-serif';if(name&&document.activeElement!==name)name.value=prefs.displayName||'Carol';}
-function bindAppearanceSettings(){const root=document.getElementById('view-settings');if(!root||root.dataset.bound)return;root.dataset.bound='1';root.querySelectorAll('[data-theme-choice]').forEach(b=>b.addEventListener('click',()=>{state.appearance.theme=b.dataset.themeChoice;applyAppearance();save();renderAppearanceSettings();}));document.getElementById('layout-density').addEventListener('change',e=>{state.appearance.density=e.target.value;applyAppearance();save();});document.getElementById('layout-font').addEventListener('change',e=>{state.appearance.font=e.target.value;applyAppearance();renderAppearanceSettings();save();});const name=document.getElementById('display-name');name.addEventListener('input',()=>{state.appearance.displayName=name.value.trim()||'Carol';applyAppearance();renderGreeting();});name.addEventListener('change',()=>{state.appearance.displayName=name.value.trim()||'Carol';applyAppearance();renderGreeting();save();});}
+function applyAppearance(){const prefs=state.appearance||{theme:'lavanda',density:'comfortable',displayName:'Carol',font:'dm-sans',wallpaper:''};if(prefs.theme==='pessego')prefs.theme='lavanda';document.body.dataset.theme=['lavanda','salvia','azul','baunilha'].includes(prefs.theme)?prefs.theme:'lavanda';document.body.dataset.density=prefs.density==='compact'?'compact':'comfortable';document.body.classList.toggle('has-wallpaper',Boolean(prefs.wallpaper));if(prefs.wallpaper)document.documentElement.style.setProperty('--user-wallpaper',`url("${prefs.wallpaper}")`);else document.documentElement.style.removeProperty('--user-wallpaper');const fonts={'dm-sans':'"DM Sans"',bricolage:'"Bricolage Grotesque"',fraunces:'"Fraunces"'};document.documentElement.style.setProperty('--app-font',fonts[prefs.font]||fonts['dm-sans']);const brandName=document.querySelector('.brand p');if(brandName)brandName.textContent=prefs.displayName||'Carol';}
+function renderAppearanceSettings(){const prefs=state.appearance||{};document.querySelectorAll('[data-theme-choice]').forEach(b=>{const selected=b.dataset.themeChoice===(prefs.theme||'lavanda');b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected));});const density=document.getElementById('layout-density'),font=document.getElementById('layout-font'),preview=document.getElementById('font-preview'),name=document.getElementById('display-name'),wallpaperStatus=document.getElementById('wallpaper-status'),wallpaperRemove=document.getElementById('wallpaper-remove');if(density)density.value=prefs.density||'comfortable';if(font)font.value=prefs.font||'dm-sans';if(preview)preview.style.fontFamily='var(--app-font),sans-serif';if(name&&document.activeElement!==name)name.value=prefs.displayName||'Carol';if(wallpaperStatus)wallpaperStatus.textContent=prefs.wallpaper?'Wallpaper aplicado':'Nenhum wallpaper escolhido';if(wallpaperRemove)wallpaperRemove.hidden=!prefs.wallpaper;}
+function bindAppearanceSettings(){const root=document.getElementById('view-settings');if(!root||root.dataset.bound)return;root.dataset.bound='1';root.querySelectorAll('[data-theme-choice]').forEach(b=>b.addEventListener('click',()=>{state.appearance.theme=b.dataset.themeChoice;applyAppearance();save();renderAppearanceSettings();}));document.getElementById('layout-density').addEventListener('change',e=>{state.appearance.density=e.target.value;applyAppearance();save();});document.getElementById('layout-font').addEventListener('change',e=>{state.appearance.font=e.target.value;applyAppearance();renderAppearanceSettings();save();});const name=document.getElementById('display-name');name.addEventListener('input',()=>{state.appearance.displayName=name.value.trim()||'Carol';applyAppearance();renderGreeting();});name.addEventListener('change',()=>{state.appearance.displayName=name.value.trim()||'Carol';applyAppearance();renderGreeting();save();});const wallpaperInput=document.getElementById('wallpaper-file');wallpaperInput?.addEventListener('change',e=>{const file=e.target.files?.[0];if(!file)return;if(!file.type.startsWith('image/')){alert('Escolha um arquivo de imagem.');wallpaperInput.value='';return;}const status=document.getElementById('wallpaper-status'),reader=new FileReader();if(status)status.textContent='Preparando imagem…';reader.onload=()=>{const image=new Image();image.onload=()=>{const scale=Math.min(1,1800/Math.max(image.width,image.height)),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(image,0,0,canvas.width,canvas.height);state.appearance.wallpaper=canvas.toDataURL('image/jpeg',.78);applyAppearance();save();renderAppearanceSettings();wallpaperInput.value='';};image.onerror=()=>{if(status)status.textContent='Não foi possível abrir essa imagem.';wallpaperInput.value='';};image.src=reader.result;};reader.onerror=()=>{if(status)status.textContent='Não foi possível ler essa imagem.';};reader.readAsDataURL(file);});document.getElementById('wallpaper-remove')?.addEventListener('click',()=>{state.appearance.wallpaper='';applyAppearance();save();renderAppearanceSettings();});}
 function filterNotes(value){const q=String(value||'').trim().toLocaleLowerCase('pt-BR'),items=[...document.querySelectorAll('.note-item')];let visible=0;items.forEach(x=>{const show=!q||x.textContent.toLocaleLowerCase('pt-BR').includes(q);x.hidden=!show;if(show)visible++;});const count=document.getElementById('notes-search-count');if(count)count.textContent=q?`${visible} resultado${visible===1?'':'s'}`:`${items.length} notas`;}
 function flushActiveNote(){const page=state.notes.activeId?getNoteById(state.notes.activeId):null,title=document.getElementById('notes-title'),content=document.getElementById('notes-content');if(!page||!title||!content)return;page.title=title.textContent.trim();page.content=content.innerHTML;page.updatedAt=new Date().toISOString();persistLocal('nota salva ao sair');}
 
@@ -6478,104 +6497,4 @@ function renderStickerItems(container,items,date=null){if(!container)return;cont
 setInterval(updateWidgetDisplays,1000);
 function renderFloatingStickers(){const layer=document.getElementById('sticker-layer');if(layer)renderStickerItems(layer,state.floatingStickers||[]);}
 function renderDailyCollage(date){const board=document.getElementById('day-collage-board');if(!board||board.dataset.date!==date)return;const items=stickerCollection(date);const empty=board.querySelector('.day-collage-empty');if(empty)empty.hidden=items.length>0||board.querySelectorAll('.agenda-event').length>0;renderStickerItems(board,items,date);}
-function bindStickerGallery(){const pop=document.getElementById('sticker-popover'),launcher=document.getElementById('sticker-launcher'),file=document.getElementById('sticker-file');const setOpen=open=>{pop.hidden=!open;launcher.setAttribute('aria-expanded',String(open));if(open){activeStickerDate=null;renderStickerGallery();}else activeStickerDate=null;};launcher.addEventListener('click',()=>setOpen(pop.hidden));document.getElementById('sticker-popover-close').addEventListener('click',()=>setOpen(false));document.getElementById('sticker-add-note').addEventListener('click',()=>createStickerNote(activeStickerDate));document.getElementById('sticker-add-image').addEventListener('click',()=>file.click());document.getElementById('sticker-add-image-widget')?.addEventListener('click',()=>file.click());document.querySelectorAll('[data-create-widget]').forEach(button=>button.addEventListener('click',()=>createStickerWidget(button.dataset.createWidget,activeStickerDate)));document.querySelectorAll('[data-sticker-color]').forEach(b=>b.addEventListener('click',()=>{nextStickerColor=b.dataset.stickerColor;document.querySelectorAll('[data-sticker-color]').forEach(x=>x.style.outline=x===b?'2px solid var(--ui-accent)':'');}));file.addEventListener('change',e=>{const f=e.target.files&&e.target.files[0];if(!f)return;if(!f.type.startsWith('image/')){alert('Escolha um arquivo de imagem.');file.value='';return;}const date=activeStickerDate,reader=new FileReader();reader.onload=()=>{const image=new Image();image.onload=()=>{const scale=Math.min(1,520/Math.max(image.width,image.height)),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);const asset={id:uid(),type:'image',src:canvas.toDataURL('image/png'),available:true,name:'Imagem enviada'};state.stickerLibrary.push(asset);addStickerInstance(asset,date);file.value='';};image.onerror=()=>{alert('Não consegui abrir essa imagem.');file.value='';};image.src=reader.result;};reader.onerror=()=>alert('Não consegui ler essa imagem.');reader.readAsDataURL(f);});}
-
-function bindStickerDrop(){const zone=document.getElementById('sticker-add-image'),file=document.getElementById('sticker-file');if(!zone||zone.dataset.dropBound)return;zone.dataset.dropBound='1';['dragenter','dragover'].forEach(name=>zone.addEventListener(name,e=>{e.preventDefault();zone.classList.add('is-drop');}));['dragleave','dragend'].forEach(name=>zone.addEventListener(name,()=>zone.classList.remove('is-drop')));zone.addEventListener('drop',e=>{e.preventDefault();zone.classList.remove('is-drop');const image=[...(e.dataTransfer?.files||[])].find(x=>x.type.startsWith('image/'));if(!image){alert('Solte um arquivo de imagem para enviar.');return;}try{const transfer=new DataTransfer();transfer.items.add(image);file.files=transfer.files;file.dispatchEvent(new Event('change',{bubbles:true}));}catch{alert('Não consegui ler esse arquivo aqui. Use o botão para escolher uma imagem.');}});}
-
-// ============================================================
-// UTILS
-// ============================================================
-function exportBackup() {
-  const backup = {
-    format: 'rotina-zapizi-backup',
-    version: SCHEMA_VERSION,
-    exportedAt: new Date().toISOString(),
-    state: stripUi(state),
-    snapshots: readSnapshots().map(s => ({ ...s, data: JSON.parse(s.data) }))
-  };
-  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `zapizi-backup-${new Date().toISOString().slice(0,10)}.json`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-async function importBackupFile(file) {
-  if (!file) return;
-  try {
-    const parsed = JSON.parse(await file.text());
-    const incoming = parsed && parsed.format === 'rotina-zapizi-backup' ? parsed.state : parsed;
-    if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) throw new Error('Formato invalido');
-    const normalized = buildInitialState(incoming);
-    if (dataScore(normalized) === 0 && dataScore(state) > 0) throw new Error('Backup vazio recusado');
-    if (!confirm('Importar este backup? O estado atual sera preservado em um snapshot.')) return;
-    makeSnapshot(state, 'antes da importacao manual');
-    const prevUi = state.ui;
-    state = normalized;
-    state.ui = prevUi;
-    stamp(state, Math.max(metaOf(state).revision, metaOf(incoming).revision) + 1);
-    persistLocal('backup importado');
-    reRenderAll();
-    setSyncStatus(sb ? 'saving' : 'offline');
-    if (sb) await saveToCloud();
-    alert('Backup importado com sucesso.');
-  } catch (e) {
-    console.warn('Falha ao importar backup', e);
-    alert('Nao foi possivel importar: arquivo invalido ou vazio.');
-  }
-}
-
-function escapeHtml(s) {
-  if (!s) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-// ============================================================
-// BOOT
-// ============================================================
-setupAppGate();
-document.getElementById('login-reset').addEventListener('click',()=>{
-  if(!confirm('Isso redefine apenas a senha de bloqueio salva neste navegador. Seus projetos, notas e demais dados continuam intactos. Deseja continuar?'))return;
-  localStorage.removeItem(APP_AUTH_KEY);
-  sessionStorage.removeItem(APP_SESSION_KEY);
-  document.getElementById('login-copy').textContent='Senha local redefinida. Crie uma nova senha para este navegador.';
-  document.getElementById('login-submit').textContent='Criar senha';
-  document.getElementById('login-password').value='';
-  document.getElementById('login-password').autocomplete='new-password';
-  document.getElementById('login-message').textContent='';
-});
-bindStickerGallery();
-bindStickerDrop();
-bootView();
-setWeekRange();
-renderFocus();
-renderAwaiting();
-renderTimeGrid();
-renderContentKanban();
-renderNotesTree();
-renderNotesEditor();
-bindNotesEditor();
-bindNotePdfInput();
-bindImageResizeGlobal();
-bindV3Controls();
-renderV3();
-renderFloatingStickers();
-scheduleCalendarRefresh();
-setInterval(positionAgendaNowLine,30000);
-window.addEventListener('resize',positionAgendaNowLine);
-
-document.querySelectorAll('.filter-bar .pill').forEach(p => {
-  p.classList.toggle('active', p.dataset.filter === state.ui.redesTab);
-});
-updateRedesView();
-
-// Inicia sincronização com Supabase (se o script CDN tiver carregado)
-bootCloud();
-</script>
-</body>
-</html>
+function bindStickerGallery(){const pop=document.getElementById('sticker-popover'),launcher=document.getElementById('sticker-launcher'),file=document.getElementById('sticker-file');const setOpen=open=>{pop.hidden=!open;launcher.setAttribute('aria-expanded',String(open));if(open){activeStickerDate=null;renderStickerGallery();}else activeStickerDate=null;};launcher.addEventListener('click',()=>setOpen(pop.hidden));document.getElementById('sticker-popover-close').addEventListener('click',()=>setOpen(false));document.getElementById('sticker-add-note').addEventListener('click',()
