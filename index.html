@@ -6497,4 +6497,104 @@ function renderStickerItems(container,items,date=null){if(!container)return;cont
 setInterval(updateWidgetDisplays,1000);
 function renderFloatingStickers(){const layer=document.getElementById('sticker-layer');if(layer)renderStickerItems(layer,state.floatingStickers||[]);}
 function renderDailyCollage(date){const board=document.getElementById('day-collage-board');if(!board||board.dataset.date!==date)return;const items=stickerCollection(date);const empty=board.querySelector('.day-collage-empty');if(empty)empty.hidden=items.length>0||board.querySelectorAll('.agenda-event').length>0;renderStickerItems(board,items,date);}
-function bindStickerGallery(){const pop=document.getElementById('sticker-popover'),launcher=document.getElementById('sticker-launcher'),file=document.getElementById('sticker-file');const setOpen=open=>{pop.hidden=!open;launcher.setAttribute('aria-expanded',String(open));if(open){activeStickerDate=null;renderStickerGallery();}else activeStickerDate=null;};launcher.addEventListener('click',()=>setOpen(pop.hidden));document.getElementById('sticker-popover-close').addEventListener('click',()=>setOpen(false));document.getElementById('sticker-add-note').addEventListener('click',()
+function bindStickerGallery(){const pop=document.getElementById('sticker-popover'),launcher=document.getElementById('sticker-launcher'),file=document.getElementById('sticker-file');const setOpen=open=>{pop.hidden=!open;launcher.setAttribute('aria-expanded',String(open));if(open){activeStickerDate=null;renderStickerGallery();}else activeStickerDate=null;};launcher.addEventListener('click',()=>setOpen(pop.hidden));document.getElementById('sticker-popover-close').addEventListener('click',()=>setOpen(false));document.getElementById('sticker-add-note').addEventListener('click',()=>createStickerNote(activeStickerDate));document.getElementById('sticker-add-image').addEventListener('click',()=>file.click());document.getElementById('sticker-add-image-widget')?.addEventListener('click',()=>file.click());document.querySelectorAll('[data-create-widget]').forEach(button=>button.addEventListener('click',()=>createStickerWidget(button.dataset.createWidget,activeStickerDate)));document.querySelectorAll('[data-sticker-color]').forEach(b=>b.addEventListener('click',()=>{nextStickerColor=b.dataset.stickerColor;document.querySelectorAll('[data-sticker-color]').forEach(x=>x.style.outline=x===b?'2px solid var(--ui-accent)':'');}));file.addEventListener('change',e=>{const f=e.target.files&&e.target.files[0];if(!f)return;if(!f.type.startsWith('image/')){alert('Escolha um arquivo de imagem.');file.value='';return;}const date=activeStickerDate,reader=new FileReader();reader.onload=()=>{const image=new Image();image.onload=()=>{const scale=Math.min(1,520/Math.max(image.width,image.height)),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);const asset={id:uid(),type:'image',src:canvas.toDataURL('image/png'),available:true,name:'Imagem enviada'};state.stickerLibrary.push(asset);addStickerInstance(asset,date);file.value='';};image.onerror=()=>{alert('Não consegui abrir essa imagem.');file.value='';};image.src=reader.result;};reader.onerror=()=>alert('Não consegui ler essa imagem.');reader.readAsDataURL(f);});}
+
+function bindStickerDrop(){const zone=document.getElementById('sticker-add-image'),file=document.getElementById('sticker-file');if(!zone||zone.dataset.dropBound)return;zone.dataset.dropBound='1';['dragenter','dragover'].forEach(name=>zone.addEventListener(name,e=>{e.preventDefault();zone.classList.add('is-drop');}));['dragleave','dragend'].forEach(name=>zone.addEventListener(name,()=>zone.classList.remove('is-drop')));zone.addEventListener('drop',e=>{e.preventDefault();zone.classList.remove('is-drop');const image=[...(e.dataTransfer?.files||[])].find(x=>x.type.startsWith('image/'));if(!image){alert('Solte um arquivo de imagem para enviar.');return;}try{const transfer=new DataTransfer();transfer.items.add(image);file.files=transfer.files;file.dispatchEvent(new Event('change',{bubbles:true}));}catch{alert('Não consegui ler esse arquivo aqui. Use o botão para escolher uma imagem.');}});}
+
+// ============================================================
+// UTILS
+// ============================================================
+function exportBackup() {
+  const backup = {
+    format: 'rotina-zapizi-backup',
+    version: SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    state: stripUi(state),
+    snapshots: readSnapshots().map(s => ({ ...s, data: JSON.parse(s.data) }))
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `zapizi-backup-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function importBackupFile(file) {
+  if (!file) return;
+  try {
+    const parsed = JSON.parse(await file.text());
+    const incoming = parsed && parsed.format === 'rotina-zapizi-backup' ? parsed.state : parsed;
+    if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) throw new Error('Formato invalido');
+    const normalized = buildInitialState(incoming);
+    if (dataScore(normalized) === 0 && dataScore(state) > 0) throw new Error('Backup vazio recusado');
+    if (!confirm('Importar este backup? O estado atual sera preservado em um snapshot.')) return;
+    makeSnapshot(state, 'antes da importacao manual');
+    const prevUi = state.ui;
+    state = normalized;
+    state.ui = prevUi;
+    stamp(state, Math.max(metaOf(state).revision, metaOf(incoming).revision) + 1);
+    persistLocal('backup importado');
+    reRenderAll();
+    setSyncStatus(sb ? 'saving' : 'offline');
+    if (sb) await saveToCloud();
+    alert('Backup importado com sucesso.');
+  } catch (e) {
+    console.warn('Falha ao importar backup', e);
+    alert('Nao foi possivel importar: arquivo invalido ou vazio.');
+  }
+}
+
+function escapeHtml(s) {
+  if (!s) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// ============================================================
+// BOOT
+// ============================================================
+setupAppGate();
+document.getElementById('login-reset').addEventListener('click',()=>{
+  if(!confirm('Isso redefine apenas a senha de bloqueio salva neste navegador. Seus projetos, notas e demais dados continuam intactos. Deseja continuar?'))return;
+  localStorage.removeItem(APP_AUTH_KEY);
+  sessionStorage.removeItem(APP_SESSION_KEY);
+  document.getElementById('login-copy').textContent='Senha local redefinida. Crie uma nova senha para este navegador.';
+  document.getElementById('login-submit').textContent='Criar senha';
+  document.getElementById('login-password').value='';
+  document.getElementById('login-password').autocomplete='new-password';
+  document.getElementById('login-message').textContent='';
+});
+bindStickerGallery();
+bindStickerDrop();
+bootView();
+setWeekRange();
+renderFocus();
+renderAwaiting();
+renderTimeGrid();
+renderContentKanban();
+renderNotesTree();
+renderNotesEditor();
+bindNotesEditor();
+bindNotePdfInput();
+bindImageResizeGlobal();
+bindV3Controls();
+renderV3();
+renderFloatingStickers();
+scheduleCalendarRefresh();
+setInterval(positionAgendaNowLine,30000);
+window.addEventListener('resize',positionAgendaNowLine);
+
+document.querySelectorAll('.filter-bar .pill').forEach(p => {
+  p.classList.toggle('active', p.dataset.filter === state.ui.redesTab);
+});
+updateRedesView();
+
+// Inicia sincronização com Supabase (se o script CDN tiver carregado)
+bootCloud();
+</script>
+</body>
+</html>
