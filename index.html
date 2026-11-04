@@ -4736,8 +4736,8 @@ function readSnapshots() {
 
 const DIRTY_KEY = KEY + '-dirty';
 let lastSnapshotAt = 0;
-function isDirty() { try { return localStorage.getItem(DIRTY_KEY) === '1'; } catch (_) { return false; } }
-function setDirty(v) { try { if (v) localStorage.setItem(DIRTY_KEY, '1'); else localStorage.removeItem(DIRTY_KEY); } catch (_) {} }
+function isDirty() { try { const b = loadBase(); return !!saveTimer || (b ? diffPaths(b.h).length > 0 : false); } catch (_) { return false; } }
+function setDirty(v) { try { localStorage.removeItem(DIRTY_KEY); } catch (_) {} }
 
 function makeSnapshot(value, reason, force) {
   if (!value || dataScore(value) === 0) return;
@@ -4780,111 +4780,186 @@ function setSyncStatus(status) {
   else                            { if (labelEl) labelEl.textContent = 'Sincronizado'; }
 }
 
-let retryTimer = null, retryCount = 0;
+// ============================================================
+// SYNC v4: merge por campo + escrita condicional (nunca sobrescreve a nuvem as cegas)
+// ============================================================
+const BASE_KEY = KEY + '-base-v4';
+const LOCAL_ONLY = new Set(['ui', '__meta']);
+const SEP = '\u0001';
+function fnv(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36) + ':' + str.length; }
+function flatten(src) { // profundidade 2: raiz + 1 nivel de objetos; arrays sao atomicos
+  const out = {};
+  for (const k of Object.keys(src || {})) {
+    if (LOCAL_ONLY.has(k)) continue;
+    const v = src[k];
+    if (v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length) {
+      for (const sub of Object.keys(v)) out[k + SEP + sub] = v[sub];
+    } else out[k] = v;
+  }
+  return out;
+}
+function hashFlat(flat) { const h = {}; for (const p in flat) h[p] = fnv(JSON.stringify(flat[p]) || 'u'); return h; }
+function hashState(v) { return hashFlat(flatten(v)); }
+function loadBase() { try { const b = JSON.parse(localStorage.getItem(BASE_KEY) || 'null'); return b && b.h ? b : null; } catch (_) { return null; } }
+function saveBase(rev, h) { try { localStorage.setItem(BASE_KEY, JSON.stringify({ rev, h, at: new Date().toISOString() })); } catch (_) {} }
+function diffPaths(baseH) {
+  const cur = hashState(state), out = [];
+  for (const p in cur) if (cur[p] !== baseH[p]) out.push(p);
+  for (const p in baseH) if (!(p in cur)) out.push(p);
+  return out;
+}
+function setPath(obj, p, v) {
+  const i = p.indexOf(SEP);
+  if (i < 0) { obj[p] = v; return; }
+  const k = p.slice(0, i), sub = p.slice(i + 1);
+  if (!obj[k] || typeof obj[k] !== 'object' || Array.isArray(obj[k])) obj[k] = {};
+  obj[k][sub] = v;
+}
+// 3-way merge: base (ultimo estado sincronizado), local e nuvem. Cada campo vai para quem realmente mexeu nele.
+function merge3(localS, remoteS, baseH) {
+  const L = flatten(localS), R = flatten(remoteS), out = {};
+  let needPush = false;
+  for (const p of new Set([...Object.keys(L), ...Object.keys(R)])) {
+    const hasL = p in L, hasR = p in R;
+    const hl = hasL ? fnv(JSON.stringify(L[p]) || 'u') : null, hr = hasR ? fnv(JSON.stringify(R[p]) || 'u') : null;
+    const hb = baseH ? baseH[p] : undefined;
+    let pick;
+    if (hl === hr) pick = 'R';
+    else if (!baseH) pick = 'R';                                  // sem base (1a vez neste aparelho): a nuvem manda
+    else if (hb === undefined) { pick = hasL ? 'L' : 'R'; }       // campo novo
+    else if (hl === hb) pick = 'R';                               // so a nuvem mudou
+    else pick = 'L';                                              // local mudou (ou conflito real): edicao local vence esse campo
+    if (pick === 'L') { needPush = needPush || hl !== hr; if (hasL) setPath(out, p, L[p]); }
+    else if (hasR) setPath(out, p, R[p]);
+  }
+  return { merged: out, needPush };
+}
+
+let retryTimer = null, retryCount = 0, pullTimer = null;
 function scheduleRetry() {
   if (retryTimer) return;
   const wait = Math.min(60000, 3000 * Math.pow(2, retryCount++));
-  retryTimer = setTimeout(() => { retryTimer = null; saveToCloud(); }, wait);
+  retryTimer = setTimeout(() => { retryTimer = null; syncNow({ pull: true }); }, wait);
 }
 
-async function saveToCloud() {
+async function fetchRemote() {
+  const { data, error } = await sb.from('rotina_state').select('data, updated_at').eq('key', ROW_KEY).maybeSingle();
+  if (error) throw error;
+  if (!data || !data.data || !Object.keys(data.data).length) return null;
+  return { data: data.data, updated_at: data.updated_at, rev: metaOf(data.data).revision };
+}
+
+async function tryCAS(rev, payload) { // so grava se a nuvem ainda estiver na revisao que vimos
+  let q = sb.from('rotina_state').update({ data: payload, updated_at: new Date().toISOString() }).eq('key', ROW_KEY);
+  q = rev > 0 ? q.eq('data->__meta->>revision', String(rev))
+              : q.or('data->__meta->>revision.is.null,data->__meta->>revision.eq.0');
+  const { data, error } = await q.select('updated_at');
+  if (error) throw error;
+  return data && data.length ? { ok: true, updated_at: data[0].updated_at } : { ok: false };
+}
+
+function snapshotPayload(rev) {
+  stamp(state, rev);
+  const payload = JSON.parse(JSON.stringify(stripUi(state)));
+  return { payload, sentH: hashState(payload) };
+}
+
+function commitSync(rev, hashes, updatedAt) {
+  lastSyncedAt = updatedAt || lastSyncedAt;
+  saveBase(rev, hashes);
+  retryCount = 0;
+  setDirty(false);
+}
+
+function applyMerged(merged, reason) {
+  const next = buildInitialState(merged);
+  if (JSON.stringify(stripUi(next)) === JSON.stringify(stripUi(state))) return false;
+  isApplyingRemote = true;
+  try {
+    makeSnapshot(state, 'antes de aplicar: ' + reason, true);
+    const prevUi = state.ui;
+    state = next; state.ui = prevUi;
+    persistLocal(reason);
+    reRenderAll();
+  } finally { isApplyingRemote = false; }
+  return true;
+}
+
+async function syncNow(opts) {
+  opts = opts || {};
   if (IS_SAFE_PREVIEW) return false;
-  if (!sb || writeInFlight) { writeQueued = !!sb; return false; }
+  if (!sb) return false;
+  if (writeInFlight) { writeQueued = true; return false; }
+  if (notesSaveTimer && opts.pull) { setTimeout(() => syncNow(opts), 1500); return false; } // nao mexe enquanto digita
   writeInFlight = true;
   try {
-    // le so os metadados (leve), nao o estado inteiro
-    const { data: row, error: readError } = await sb.from('rotina_state')
-      .select('updated_at, meta:data->__meta').eq('key', ROW_KEY).maybeSingle();
-    if (readError) throw readError;
-    const remoteMeta = row && row.meta ? { __meta: row.meta } : null;
-    const dirty = isDirty();
-    if (remoteMeta && !dirty && compareStates(remoteMeta, state) > 0) {
-      // nuvem mais nova e NADA pendente aqui: puxa a nuvem
-      const full = await loadFromCloud();
-      if (full) { applyRemote(full, row.updated_at, 'nuvem mais recente'); setSyncStatus('synced'); return true; }
+    let base = loadBase();
+
+    // importacao manual: sobrescreve a nuvem de proposito
+    if (opts.force) {
+      for (let i = 0; i < 3; i++) {
+        const r = await fetchRemote();
+        const rev = r ? r.rev : 0;
+        const { payload, sentH } = snapshotPayload(rev + 1);
+        const res = r ? await tryCAS(rev, payload)
+                      : await sb.from('rotina_state').insert({ key: ROW_KEY, data: payload, updated_at: new Date().toISOString() }).select('updated_at').then(x => x.error ? { ok: false } : { ok: true, updated_at: x.data[0].updated_at });
+        if (res.ok) { commitSync(rev + 1, sentH, res.updated_at); setSyncStatus('synced'); return true; }
+      }
+      throw new Error('conflito ao importar');
     }
-    // edicao local pendente sempre vence: nunca descartamos o que foi digitado
-    const nextRevision = Math.max(metaOf(state).revision, remoteMeta ? metaOf(remoteMeta).revision : 0) + 1;
-    const sentAtDirtyVersion = localStorage.getItem(DIRTY_KEY + '-v');
-    stamp(state, nextRevision);
-    persistLocal('antes de sincronizar');
-    const payload = stripUi(state);
-    const { data, error } = await sb
-      .from('rotina_state')
-      .upsert({ key: ROW_KEY, data: payload, updated_at: new Date().toISOString() }, { onConflict: 'key' })
-      .select('updated_at')
-      .single();
-    if (error) { console.warn('save error', error); setSyncStatus('error'); scheduleRetry(); return false; }
-    lastSyncedAt = data && data.updated_at;
-    retryCount = 0;
-    if (!writeQueued && !saveTimer) setDirty(false);
-    setSyncStatus('synced');
-    return true;
-  } catch(e) {
-    console.warn('save exception', e);
+
+    // caminho rapido: tem alteracao local real e base conhecida -> escrita condicional, sem ler a nuvem
+    if (base) {
+      const changed = diffPaths(base.h);
+      if (changed.length) {
+        const { payload, sentH } = snapshotPayload(base.rev + 1);
+        const r = await tryCAS(base.rev, payload);
+        if (r.ok) { commitSync(base.rev + 1, sentH, r.updated_at); setSyncStatus('synced'); return true; }
+        // conflito: outro aparelho gravou antes -> cai no merge abaixo
+      } else if (!opts.pull) { setSyncStatus('synced'); return true; } // so mudou UI/navegacao: nada a enviar
+    }
+
+    // caminho lento: puxa a nuvem, mescla campo a campo e (se preciso) envia
+    for (let i = 0; i < 4; i++) {
+      const remote = await fetchRemote();
+      if (!remote) {
+        if (dataScore(state) === 0) { setSyncStatus('synced'); return true; }
+        const { payload, sentH } = snapshotPayload(1);
+        const { data, error } = await sb.from('rotina_state').insert({ key: ROW_KEY, data: payload, updated_at: new Date().toISOString() }).select('updated_at');
+        if (!error && data && data.length) { commitSync(1, sentH, data[0].updated_at); setSyncStatus('synced'); return true; }
+        continue; // alguem criou antes: tenta de novo lendo
+      }
+      base = loadBase();
+      const remoteN = stripUi(buildInitialState(remote.data));
+      if (!base && JSON.stringify(stripUi(state)) !== JSON.stringify(remoteN)) makeSnapshot(state, 'antes da 1a sincronizacao v4', true);
+      const res = merge3(stripUi(state), remoteN, base ? base.h : null);
+      if (isSuspiciousRegression(stamp(buildInitialState(res.merged), remote.rev), remote.data)) { console.warn('Merge rejeitado: parece vazio/incompleto'); setSyncStatus('error'); return false; }
+      applyMerged(res.merged, 'sincronizacao');
+      if (!res.needPush) { commitSync(remote.rev, hashState(state), remote.updated_at); setSyncStatus('synced'); return true; }
+      const { payload, sentH } = snapshotPayload(remote.rev + 1);
+      const r = await tryCAS(remote.rev, payload);
+      if (r.ok) { commitSync(remote.rev + 1, sentH, r.updated_at); setSyncStatus('synced'); return true; }
+    }
+    throw new Error('conflito persistente');
+  } catch (e) {
+    console.warn('sync error', e);
     setSyncStatus('error');
     scheduleRetry();
     return false;
   } finally {
     writeInFlight = false;
-    if (writeQueued) { writeQueued = false; setTimeout(saveToCloud, 50); }
+    if (writeQueued) { writeQueued = false; setTimeout(() => syncNow(), 50); }
   }
 }
-
-async function loadFromCloud() {
-  if (!sb) return null;
-  try {
-    const { data, error } = await sb
-      .from('rotina_state')
-      .select('data, updated_at')
-      .eq('key', ROW_KEY)
-      .maybeSingle();
-    if (error) { console.warn('load error', error); return null; }
-    if (data && data.updated_at) lastSyncedAt = data.updated_at;
-    if (data && data.data && Object.keys(data.data).length > 0) return data.data;
-    return null;
-  } catch(e) {
-    console.warn('load exception', e);
-    return null;
-  }
-}
+function saveToCloud() { return syncNow(); }
 
 function save() {
   if (isApplyingRemote) return;
-  stamp(state, metaOf(state).revision + 1);
-  setDirty(true);
   persistLocal('edicao local');
   if (!sb) return;
   setSyncStatus('saving');
   if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    saveTimer = null;
-    saveToCloud();
-  }, 600);
-}
-
-function applyRemote(remote, updatedAt, reason) {
-  if (!remote) return false;
-  if (isDirty() || saveTimer || notesSaveTimer) return false; // ha edicao local nao enviada: ela vence
-  if (isSuspiciousRegression(remote, state)) {
-    console.warn('Atualizacao remota rejeitada por parecer vazia ou incompleta.');
-    return false;
-  }
-  if (JSON.stringify(stripUi(buildInitialState(remote))) === JSON.stringify(stripUi(state))) {
-    if (updatedAt) lastSyncedAt = updatedAt;
-    return true; // identico: nao redesenha nada
-  }
-  isApplyingRemote = true;
-  try {
-    makeSnapshot(state, 'antes de aplicar: ' + reason);
-    const prevUi = state.ui;
-    state = buildInitialState(remote);
-    state.ui = prevUi;
-    persistLocal(reason);
-    reRenderAll();
-  } finally { isApplyingRemote = false; }
-  if (updatedAt) lastSyncedAt = updatedAt;
-  return true;
+  saveTimer = setTimeout(() => { saveTimer = null; syncNow(); }, 900);
 }
 
 function reRenderAll() {
@@ -4913,12 +4988,12 @@ function setupRealtime() {
     .on('postgres_changes',
       { event: '*', schema: 'public', table: 'rotina_state', filter: 'key=eq.' + ROW_KEY },
       payload => {
-        const newRow = payload.new || {};
-        if (!newRow.data) return;
-        if (newRow.updated_at && lastSyncedAt && newRow.updated_at === lastSyncedAt) return;
-        const cmp = compareStates(newRow.data, state);
-        if (cmp > 0 && !isDirty() && applyRemote(newRow.data, newRow.updated_at, 'realtime')) setSyncStatus('synced');
-        else if (cmp < 0 || isDirty()) { setSyncStatus('saving'); saveToCloud(); }
+        const nr = payload.new || {};
+        const m = nr.data && nr.data.__meta;
+        if (m && m.deviceId === deviceId) return;                                  // foi eu que gravei
+        if (nr.updated_at && lastSyncedAt && nr.updated_at === lastSyncedAt) return;
+        clearTimeout(pullTimer);
+        pullTimer = setTimeout(() => syncNow({ pull: true }), 800);                // puxa e mescla; nunca grava por causa disso
       }
     )
     .subscribe();
@@ -4933,34 +5008,20 @@ async function bootCloud() {
   }
   if (!window.supabase) { setSyncStatus('offline'); return; }
   try {
-    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-      realtime: { params: { eventsPerSecond: 5 } }
-    });
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: { params: { eventsPerSecond: 5 } } });
   } catch(e) {
     console.warn('supabase init failed', e);
     setSyncStatus('offline');
     return;
   }
   setSyncStatus('loading');
-  const cloud = await loadFromCloud();
-  if (cloud) {
-    if (isDirty()) await saveToCloud();            // tem edicao local nao enviada: envia
-    else if (compareStates(cloud, state) > 0) applyRemote(cloud, lastSyncedAt, 'inicializacao');
-    else if (compareStates(cloud, state) < 0) await saveToCloud();
-    setSyncStatus('synced');
-  } else {
-    const ok = await saveToCloud();
-    if (ok) setSyncStatus('synced');
-  }
+  await syncNow({ pull: true });
   revealApp();
   setupRealtime();
   window.addEventListener('offline', () => setSyncStatus('offline'));
-  window.addEventListener('online', async () => {
-    setSyncStatus('loading');
-    const remote = await loadFromCloud();
-    if (!isDirty() && remote && compareStates(remote, state) > 0) applyRemote(remote, lastSyncedAt, 'reconexao');
-    else { setSyncStatus('saving'); await saveToCloud(); }
-  });
+  window.addEventListener('online', () => { setSyncStatus('loading'); syncNow({ pull: true }); });
+  // aba/app que volta ao foco puxa a nuvem antes de qualquer edicao (evita aba velha reenviar estado antigo)
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncNow({ pull: true }); });
 }
 
 function uid() { return Math.random().toString(36).slice(2, 9); }
@@ -7027,11 +7088,10 @@ async function importBackupFile(file) {
     const prevUi = state.ui;
     state = normalized;
     state.ui = prevUi;
-    stamp(state, Math.max(metaOf(state).revision, metaOf(incoming).revision) + 1);
     persistLocal('backup importado');
     reRenderAll();
     setSyncStatus(sb ? 'saving' : 'offline');
-    if (sb) await saveToCloud();
+    if (sb) await syncNow({ force: true });
     alert('Backup importado com sucesso.');
   } catch (e) {
     console.warn('Falha ao importar backup', e);
