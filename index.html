@@ -4943,6 +4943,7 @@ async function syncNow(opts) {
     throw new Error('conflito persistente');
   } catch (e) {
     console.warn('sync error', e);
+    try { window.__lastSyncError = (e && (e.message || e.code)) ? ((e.code ? e.code + ' | ' : '') + (e.message || '') + (e.details ? ' | ' + e.details : '') + (e.hint ? ' | ' + e.hint : '')) : String(e); } catch (_) {}
     setSyncStatus('error');
     scheduleRetry();
     return false;
@@ -4981,6 +4982,16 @@ function reRenderAll() {
   renderStickerGallery();
   try { renderHomeToday(); applyAppearanceV2(); renderPrefsV4(); } catch (e) { console.warn(e); }
 }
+
+document.getElementById('sync-pill')?.addEventListener('click', async () => {
+  const b = loadBase();
+  let remote = 'sem conexao';
+  try { if (sb) { const r = await sb.from('rotina_state').select('updated_at, meta:data->__meta').eq('key', ROW_KEY).maybeSingle(); remote = r.error ? 'ERRO leitura: ' + (r.error.message || r.error.code) : JSON.stringify(r.data); } } catch (e) { remote = 'EXCECAO: ' + (e && e.message || e); }
+  alert('DIAGNOSTICO SYNC (codigo v4)\n\nstatus: ' + (document.querySelector('#sync-pill .sync-label')?.textContent || '') +
+    '\nsupabase conectado: ' + (!!sb) + '\npreview seguro: ' + IS_SAFE_PREVIEW +
+    '\nbase local: ' + (b ? 'rev ' + b.rev + ' em ' + b.at : 'nenhuma') +
+    '\nnuvem: ' + remote + '\nultimo erro: ' + (window.__lastSyncError || 'nenhum'));
+});
 
 function setupRealtime() {
   if (!sb) return;
