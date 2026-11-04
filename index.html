@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" data-theme="areia">
+<html lang="pt-BR" data-theme="lavanda">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3968,9 +3968,10 @@ body[data-hero="image"] #view-time .home-hero::after{content:"";position:absolut
 #view-time .dashboard-strip>*{padding:10px 14px!important}
 #view-time .home-on{grid-row:var(--row,auto)}
 @media(max-width:980px){#view-time .home-on{grid-row:auto!important}}
+body.booting .main{opacity:0;transition:opacity .15s}
 </style>
 </head>
-<body>
+<body class="booting">
 <div class="app">
   <header class="topbar">
     <div class="brand">
@@ -4563,7 +4564,7 @@ const SNAPSHOT_KEY = KEY + '-snapshots-v2';
 const DEVICE_KEY = KEY + '-device-id';
 const SCHEMA_VERSION = 3;
 const IS_SAFE_PREVIEW = location.protocol === 'file:' || location.hostname === '127.0.0.1' || location.hostname === 'localhost';
-const MAX_SNAPSHOTS = 30;
+const MAX_SNAPSHOTS = 5;
 const deviceId = (() => {
   let id = localStorage.getItem(DEVICE_KEY);
   if (!id) { id = 'dev-' + crypto.randomUUID(); localStorage.setItem(DEVICE_KEY, id); }
@@ -4733,24 +4734,38 @@ function readSnapshots() {
   catch (_) { return []; }
 }
 
-function makeSnapshot(value, reason) {
+const DIRTY_KEY = KEY + '-dirty';
+let lastSnapshotAt = 0;
+function isDirty() { try { return localStorage.getItem(DIRTY_KEY) === '1'; } catch (_) { return false; } }
+function setDirty(v) { try { if (v) localStorage.setItem(DIRTY_KEY, '1'); else localStorage.removeItem(DIRTY_KEY); } catch (_) {} }
+
+function makeSnapshot(value, reason, force) {
   if (!value || dataScore(value) === 0) return;
-  const snapshots = readSnapshots();
+  const now = Date.now();
+  if (!force && now - lastSnapshotAt < 5 * 60 * 1000) return; // no maximo 1 snapshot a cada 5 min
+  lastSnapshotAt = now;
   const serialized = JSON.stringify(stripUi(value));
+  if (serialized.length > 1500000) return; // estado grande demais: nao duplica no localStorage
+  const snapshots = readSnapshots();
   if (snapshots[0] && snapshots[0].data === serialized) return;
   snapshots.unshift({ at: new Date().toISOString(), reason, meta: metaOf(value), data: serialized });
   try { localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshots.slice(0, MAX_SNAPSHOTS))); }
   catch (_) {
-    try { localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshots.slice(0, 10))); } catch (_) {}
+    try { localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshots.slice(0, 2))); }
+    catch (_) { try { localStorage.removeItem(SNAPSHOT_KEY); } catch (_) {} }
   }
 }
 
 function persistLocal(reason) {
+  const json = JSON.stringify(state);
   try {
-    const old = localStorage.getItem(KEY);
-    if (old) { try { makeSnapshot(JSON.parse(old), reason || 'antes da alteracao local'); } catch (_) {} }
-    localStorage.setItem(KEY, JSON.stringify(state));
-  } catch (e) { console.warn('localStorage indisponivel', e); }
+    localStorage.setItem(KEY, json);
+    return true;
+  } catch (e) {
+    // cota estourada: libera os snapshots (o dado principal tem prioridade) e tenta de novo
+    try { localStorage.removeItem(SNAPSHOT_KEY); localStorage.setItem(KEY, json); return true; }
+    catch (e2) { console.warn('localStorage indisponivel', e2); setSyncStatus(sb ? 'saving' : 'error'); return false; }
+  }
 }
 
 function setSyncStatus(status) {
@@ -4765,45 +4780,50 @@ function setSyncStatus(status) {
   else                            { if (labelEl) labelEl.textContent = 'Sincronizado'; }
 }
 
+let retryTimer = null, retryCount = 0;
+function scheduleRetry() {
+  if (retryTimer) return;
+  const wait = Math.min(60000, 3000 * Math.pow(2, retryCount++));
+  retryTimer = setTimeout(() => { retryTimer = null; saveToCloud(); }, wait);
+}
+
 async function saveToCloud() {
   if (IS_SAFE_PREVIEW) return false;
   if (!sb || writeInFlight) { writeQueued = !!sb; return false; }
   writeInFlight = true;
   try {
-    const { data: currentRow, error: readError } = await sb.from('rotina_state')
-      .select('data, updated_at').eq('key', ROW_KEY).maybeSingle();
+    // le so os metadados (leve), nao o estado inteiro
+    const { data: row, error: readError } = await sb.from('rotina_state')
+      .select('updated_at, meta:data->__meta').eq('key', ROW_KEY).maybeSingle();
     if (readError) throw readError;
-    const remote = currentRow && currentRow.data;
-    if (remote && compareStates(remote, state) > 0) {
-      makeSnapshot(state, 'conflito: local preservado');
-      applyRemote(remote, currentRow.updated_at, 'nuvem mais recente');
-      setSyncStatus('synced');
-      return true;
+    const remoteMeta = row && row.meta ? { __meta: row.meta } : null;
+    const dirty = isDirty();
+    if (remoteMeta && !dirty && compareStates(remoteMeta, state) > 0) {
+      // nuvem mais nova e NADA pendente aqui: puxa a nuvem
+      const full = await loadFromCloud();
+      if (full) { applyRemote(full, row.updated_at, 'nuvem mais recente'); setSyncStatus('synced'); return true; }
     }
-    if (remote && isSuspiciousRegression(state, remote)) {
-      makeSnapshot(state, 'envio bloqueado: regressao suspeita');
-      makeSnapshot(remote, 'copia da nuvem antes do bloqueio');
-      applyRemote(remote, currentRow.updated_at, 'regressao local bloqueada');
-      setSyncStatus('error');
-      console.warn('Envio bloqueado: o estado local era vazio ou muito menor que a nuvem.');
-      return false;
-    }
-    const nextRevision = Math.max(metaOf(state).revision, metaOf(remote).revision) + 1;
+    // edicao local pendente sempre vence: nunca descartamos o que foi digitado
+    const nextRevision = Math.max(metaOf(state).revision, remoteMeta ? metaOf(remoteMeta).revision : 0) + 1;
+    const sentAtDirtyVersion = localStorage.getItem(DIRTY_KEY + '-v');
     stamp(state, nextRevision);
     persistLocal('antes de sincronizar');
     const payload = stripUi(state);
     const { data, error } = await sb
       .from('rotina_state')
-      .upsert({ key: ROW_KEY, data: payload }, { onConflict: 'key' })
+      .upsert({ key: ROW_KEY, data: payload, updated_at: new Date().toISOString() }, { onConflict: 'key' })
       .select('updated_at')
       .single();
-    if (error) { console.warn('save error', error); setSyncStatus('error'); return false; }
+    if (error) { console.warn('save error', error); setSyncStatus('error'); scheduleRetry(); return false; }
     lastSyncedAt = data && data.updated_at;
+    retryCount = 0;
+    if (!writeQueued && !saveTimer) setDirty(false);
     setSyncStatus('synced');
     return true;
   } catch(e) {
     console.warn('save exception', e);
     setSyncStatus('error');
+    scheduleRetry();
     return false;
   } finally {
     writeInFlight = false;
@@ -4832,6 +4852,7 @@ async function loadFromCloud() {
 function save() {
   if (isApplyingRemote) return;
   stamp(state, metaOf(state).revision + 1);
+  setDirty(true);
   persistLocal('edicao local');
   if (!sb) return;
   setSyncStatus('saving');
@@ -4843,20 +4864,26 @@ function save() {
 }
 
 function applyRemote(remote, updatedAt, reason) {
-  if (!remote || isSuspiciousRegression(remote, state)) {
-    makeSnapshot(remote, 'remoto rejeitado: regressao suspeita');
+  if (!remote) return false;
+  if (isDirty() || saveTimer || notesSaveTimer) return false; // ha edicao local nao enviada: ela vence
+  if (isSuspiciousRegression(remote, state)) {
     console.warn('Atualizacao remota rejeitada por parecer vazia ou incompleta.');
     return false;
   }
+  if (JSON.stringify(stripUi(buildInitialState(remote))) === JSON.stringify(stripUi(state))) {
+    if (updatedAt) lastSyncedAt = updatedAt;
+    return true; // identico: nao redesenha nada
+  }
   isApplyingRemote = true;
-  makeSnapshot(state, 'antes de aplicar: ' + reason);
-  const prevUi = state.ui;
-  state = buildInitialState(remote);
-  state.ui = prevUi;
-  persistLocal(reason);
-  reRenderAll();
+  try {
+    makeSnapshot(state, 'antes de aplicar: ' + reason);
+    const prevUi = state.ui;
+    state = buildInitialState(remote);
+    state.ui = prevUi;
+    persistLocal(reason);
+    reRenderAll();
+  } finally { isApplyingRemote = false; }
   if (updatedAt) lastSyncedAt = updatedAt;
-  isApplyingRemote = false;
   return true;
 }
 
@@ -4877,6 +4904,7 @@ function reRenderAll() {
   if (state.ui.view === 'settings') renderAppearanceSettings();
   renderAllStickerScopes();
   renderStickerGallery();
+  try { renderHomeToday(); applyAppearanceV2(); renderPrefsV4(); } catch (e) { console.warn(e); }
 }
 
 function setupRealtime() {
@@ -4889,8 +4917,8 @@ function setupRealtime() {
         if (!newRow.data) return;
         if (newRow.updated_at && lastSyncedAt && newRow.updated_at === lastSyncedAt) return;
         const cmp = compareStates(newRow.data, state);
-        if (cmp > 0 && applyRemote(newRow.data, newRow.updated_at, 'realtime')) setSyncStatus('synced');
-        else if (cmp < 0) { setSyncStatus('saving'); saveToCloud(); }
+        if (cmp > 0 && !isDirty() && applyRemote(newRow.data, newRow.updated_at, 'realtime')) setSyncStatus('synced');
+        else if (cmp < 0 || isDirty()) { setSyncStatus('saving'); saveToCloud(); }
       }
     )
     .subscribe();
@@ -4916,20 +4944,21 @@ async function bootCloud() {
   setSyncStatus('loading');
   const cloud = await loadFromCloud();
   if (cloud) {
-    const cmp = compareStates(cloud, state);
-    if (cmp > 0 && !isSuspiciousRegression(cloud, state)) applyRemote(cloud, lastSyncedAt, 'inicializacao');
-    else if (cmp < 0 || isSuspiciousRegression(cloud, state)) await saveToCloud();
+    if (isDirty()) await saveToCloud();            // tem edicao local nao enviada: envia
+    else if (compareStates(cloud, state) > 0) applyRemote(cloud, lastSyncedAt, 'inicializacao');
+    else if (compareStates(cloud, state) < 0) await saveToCloud();
     setSyncStatus('synced');
   } else {
     const ok = await saveToCloud();
     if (ok) setSyncStatus('synced');
   }
+  revealApp();
   setupRealtime();
   window.addEventListener('offline', () => setSyncStatus('offline'));
   window.addEventListener('online', async () => {
     setSyncStatus('loading');
     const remote = await loadFromCloud();
-    if (remote && compareStates(remote, state) > 0) applyRemote(remote, lastSyncedAt, 'reconexao');
+    if (!isDirty() && remote && compareStates(remote, state) > 0) applyRemote(remote, lastSyncedAt, 'reconexao');
     else { setSyncStatus('saving'); await saveToCloud(); }
   });
 }
@@ -7161,6 +7190,16 @@ updateRedesView();
 
 // Inicia sincronização com Supabase (se o script CDN tiver carregado)
 bindPrefsV4();renderPrefsV4();applyAppearanceV2();renderHomeToday();setInterval(checkReminders,30000);checkReminders();
+function revealApp(){document.body.classList.remove('booting');}
+setTimeout(revealApp, 2500); // nunca deixa a tela escondida
+function flushPending(){
+  try{ const ae=document.activeElement; if(ae && ae.blur) ae.blur(); }catch(_){}
+  try{ if(notesSaveTimer){ clearTimeout(notesSaveTimer); notesSaveTimer=null; const p=state.notes.activeId?getNoteById(state.notes.activeId):null, t=document.getElementById('notes-title'), c=document.getElementById('notes-content'); if(p&&t&&c){p.title=t.textContent.trim();p.content=c.innerHTML;p.updatedAt=new Date().toISOString();} save(); } }catch(_){}
+  try{ if(saveTimer){ clearTimeout(saveTimer); saveTimer=null; saveToCloud(); } }catch(_){}
+}
+window.addEventListener('pagehide', flushPending);
+window.addEventListener('beforeunload', flushPending);
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden') flushPending(); });
 bootCloud();
 </script>
 
@@ -7175,18 +7214,4 @@ function stickerCollection(date=null){if(date&&/^\d{4}-\d{2}-\d{2}$/.test(String
 function removeStickerById(id){[state.floatingStickers,...Object.values(state.dailyCollages||{})].forEach(arr=>{if(!Array.isArray(arr))return;const i=arr.findIndex(x=>String(x.id)===String(id));if(i>=0)arr.splice(i,1);});}
 function nextStickerPosition(scope){const c=stickerScopeContainer(scope),n=(state.floatingStickers||[]).length,w=c&&c.clientWidth||window.innerWidth,h=c&&c.clientHeight||window.innerHeight,top=c?-c.getBoundingClientRect().top:0;const x=Math.max(8,Math.min(w*.6+(n%5)*14,w-200)),y=Math.max(8,Math.min(Math.max(0,top)+140+(n%5)*14,h-160));return{x:Math.round(x),y:Math.round(y)};}
 function setStickerNodePosition(node,item){const c=node.parentElement,w=c&&c.clientWidth;if(!item.pos2){if(!w){node.style.left=(Number(item.x)||0)+'%';node.style.top=(Number(item.py)||0)+'px';return;}item.x=Number.isFinite(Number(item.px))?Number(item.px)/w*100:(Number(item.x)||0);if(!Number.isFinite(Number(item.py)))item.py=(Number(item.y)||0)/100*(c.clientHeight||window.innerHeight);item.pos2=1;}node.style.left=Number(item.x)+'%';node.style.top=(Number(item.py)||0)+'px';}
-function saveStickerNodePosition(node,item){const c=node.parentElement,w=c&&c.clientWidth||window.innerWidth,h=c&&c.clientHeight||window.innerHeight;item.px=Math.round(node.offsetLeft);item.py=Math.round(node.offsetTop);item.x=Number((node.offsetLeft/w*100).toFixed(3));item.y=Number((node.offsetTop/h*100).toFixed(3));item.w=node.offsetWidth;item.h=node.offsetHeight;item.pos2=1;save();}
-function renderStickerScope(scope){const c=stickerScopeContainer(scope);if(!c)return;scope=String(scope);let items=(state.floatingStickers||[]).filter(i=>normalizeStickerScope(i)&&i.scope===scope);if(scope.startsWith('day:'))items=[...(state.dailyCollages[scope.slice(4)]||[]).map(normalizeStickerScope),...items];renderStickerItems(c,items,scope);}
-function renderAllStickerScopes(){(state.floatingStickers||[]).forEach(normalizeStickerScope);Object.values(state.dailyCollages||{}).forEach(a=>Array.isArray(a)&&a.forEach(normalizeStickerScope));const sc=new Set(['view:'+(activeStickerView()||'time')]);state.floatingStickers.forEach(i=>{if(String(i.scope).startsWith('view:'))sc.add(i.scope);});sc.forEach(renderStickerScope);const b=document.getElementById('day-collage-board');if(b&&b.dataset.date)renderStickerScope('day:'+b.dataset.date);}
-function renderStickersEverywhere(){renderAllStickerScopes();}
-function renderFloatingStickers(){renderAllStickerScopes();}
-function reflowStickers(){renderAllStickerScopes();}
-document.querySelectorAll('.view').forEach(v=>new MutationObserver(()=>{if(v.classList.contains('active'))setTimeout(renderAllStickerScopes,30);}).observe(v,{attributes:true,attributeFilter:['class']}));
-/* imagem do topo (home) */
-function heroInline(){const h=document.querySelector('#view-time .home-hero');if(!h)return;const p=state.appearance||{};if(p.hero==='image'&&p.heroImage)h.style.setProperty('background','linear-gradient(90deg,rgba(255,255,255,.88),rgba(255,255,255,.5) 60%,rgba(255,255,255,.3)),url("'+p.heroImage+'") center/cover no-repeat','important');else h.style.removeProperty('background');}
-(function(){const o=applyAppearanceV2;applyAppearanceV2=function(){const r=o.apply(this,arguments);try{heroInline();}catch(_){}return r;};})();
-document.getElementById('hero-file')?.addEventListener('change',async e=>{const f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;try{const raw=await readFileAsDataURL(f),img=await loadImageElement(raw),sc=Math.min(1,1400/Math.max(img.width,1)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*sc));c.height=Math.max(1,Math.round(img.height*sc));c.getContext('2d').drawImage(img,0,0,c.width,c.height);state.appearance.heroImage=c.toDataURL('image/jpeg',.75);state.appearance.hero='image';applyAppearanceV2();save();renderPrefsV4();}catch(err){alert('Não consegui carregar essa imagem: '+(err&&err.message||err));}});
-applyAppearanceV2();renderAllStickerScopes();
-</script>
-</body>
-</html>
+function saveStickerNodePosition(node,item){const c=node.parentElement,w=c&&c.clientWidth||window.innerWidth,h=c&&c.clientHeight||window.innerHeight;item.px=Math.round(node.offsetLeft);item.py=Math.round(node.offsetTop);item.x=Number((node.offsetLeft/w*100).toFixed(3));item.y=Number((node.offsetTop/h*100).toFixed(3));item.w=node.offsetWidth;item.h=node.offsetHeight;item.pos2=1;sav
