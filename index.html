@@ -2989,7 +2989,9 @@ body[data-theme="lavanda"]::before,body[data-theme="salvia"]::before { height:49
 .dash-stat { display:flex; align-items:center; gap:9px; min-height:62px; padding:10px 13px!important; border:0!important; border-radius:18px!important; background:rgba(255,255,255,.78)!important; box-shadow:0 4px 14px hsl(var(--mh) calc(0.67 * var(--mc)) 20.2% / 0.04); }
 .dash-stat strong { flex:0 0 auto; color:var(--ui-accent)!important; font-size:20px!important; }
 .dash-stat span { color:hsl(var(--mh) calc(0.41 * var(--mc)) 45.1%)!important; font-size:10px!important; line-height:1.2; }
-.sticker-layer { z-index:40!important; pointer-events:none!important; }
+.sticker-layer { position:absolute!important; inset:0!important; width:100%!important; height:100%!important; z-index:40!important; pointer-events:none!important; overflow:visible!important; }
+.sticker-layer>.floating-sticker { pointer-events:auto!important; }
+#day-collage-board.floating-sticker { position:absolute!important; }
 .floating-sticker { overflow:visible!important; min-width:0!important; min-height:0!important; }
 .floating-sticker.image-sticker { padding:0!important; border:0!important; border-radius:0!important; background:transparent!important; box-shadow:none!important; }
 .sticker-image { display:block!important; width:100%!important; height:100%!important; object-fit:contain!important; border:0!important; border-radius:0!important; background:transparent!important; filter:drop-shadow(0 5px 7px hsl(var(--mh) calc(0.61 * var(--mc)) 20.6% / 0.14)); cursor:grab; touch-action:none; }
@@ -4262,7 +4264,7 @@ body[data-hero="image"] #view-time .home-hero::after{content:"";position:absolut
     <small class="login-hint">Essa senha bloqueia a tela neste navegador. A sincronização da conta continua usando as permissões já configuradas no Supabase.</small>
   </section>
 </div>
-<div id="sticker-layer" class="sticker-layer" aria-label="Post-its e imagens flutuantes"></div>
+<div id="sticker-layer" class="sticker-layer" data-sticker-scope="layer" aria-label="Post-its e imagens flutuantes"></div>
 <button id="sticker-launcher" class="sticker-launcher" type="button" aria-label="Abrir Stickers e widgets" aria-expanded="false" title="Stickers e widgets">✿ Stickers</button>
 <aside id="sticker-popover" class="sticker-popover" hidden aria-label="Galeria flutuante">
   <div class="sticker-popover-head"><h3>Seus stickers</h3><button type="button" id="sticker-popover-close" aria-label="Minimizar galeria" title="Minimizar">−</button></div>
@@ -4873,7 +4875,7 @@ function reRenderAll() {
   renderV3();
   applyAppearance();
   if (state.ui.view === 'settings') renderAppearanceSettings();
-  renderFloatingStickers();
+  renderAllStickerScopes();
   renderStickerGallery();
 }
 
@@ -6666,7 +6668,7 @@ function renderAgendaDay(board,d){
   const iso=dateISO(d),items=itemsForDate(iso),weekday=d.toLocaleDateString('pt-BR',{weekday:'long'}),month=V3_MONTHS_SHORT_PT[d.getMonth()];
   const timeValue=item=>{const match=/^(\d{1,2}):(\d{2})$/.exec(String(item.time||''));return match?Number(match[1])*60+Number(match[2]):1440;};
   const events=[...items].sort((a,b)=>timeValue(a)-timeValue(b)||String(a.title||'').localeCompare(String(b.title||''),'pt-BR')).map(item=>agendaEventHTML(item)).join('');
-  board.innerHTML=`<div class="day-agenda"><header class="day-page-head"><div class="day-page-date"><span class="day-date-badge"><small>${escapeHtml(month)}</small><b>${String(d.getDate()).padStart(2,'0')}</b></span><div><h3>${escapeHtml(weekday)}, ${String(d.getDate()).padStart(2,'0')} de ${escapeHtml(V3_MONTHS_PT[d.getMonth()])}</h3><p>${d.getFullYear()} <i></i> ${items.length} ${items.length===1?'demanda':'demandas'}</p></div></div><div class="day-collage-actions"><button type="button" onclick="pendingDayCanvasPosition={date:'${iso}',x:8,y:8};openQuickAdd('${iso}','09:00')">＋ Demanda</button><button type="button" onclick="openStickerGalleryForDate('${iso}')">＋ Sticker</button><button type="button" onclick="createStickerNote('${iso}')">＋ Post-it</button><button type="button" onclick="uploadStickerForDate('${iso}')">＋ Imagem</button></div></header><div class="day-split">${dayPaneHTML(iso)}<div class="day-space-board" id="day-collage-board" data-date="${iso}" onclick="openDayQuickAdd(event,'${iso}')" ondragover="agendaDragOver(event)" ondragleave="agendaDragLeave(event)" ondrop="dropDayAgendaItem(event,'${iso}')"><div class="day-task-list"></div><p class="day-collage-empty">Seu espaço está livre. Clique para criar uma demanda ou cole adesivos, imagens e post-its.</p></div></div></div>`;
+  board.innerHTML=`<div class="day-agenda"><header class="day-page-head"><div class="day-page-date"><span class="day-date-badge"><small>${escapeHtml(month)}</small><b>${String(d.getDate()).padStart(2,'0')}</b></span><div><h3>${escapeHtml(weekday)}, ${String(d.getDate()).padStart(2,'0')} de ${escapeHtml(V3_MONTHS_PT[d.getMonth()])}</h3><p>${d.getFullYear()} <i></i> ${items.length} ${items.length===1?'demanda':'demandas'}</p></div></div><div class="day-collage-actions"><button type="button" onclick="pendingDayCanvasPosition={date:'${iso}',x:8,y:8};openQuickAdd('${iso}','09:00')">＋ Demanda</button><button type="button" onclick="openStickerGalleryForDate('${iso}')">＋ Sticker</button><button type="button" onclick="createStickerNote('${iso}')">＋ Post-it</button><button type="button" onclick="uploadStickerForDate('${iso}')">＋ Imagem</button></div></header><div class="day-split">${dayPaneHTML(iso)}<div class="day-space-board" id="day-collage-board" data-date="${iso}" data-sticker-scope="day:${iso}" onclick="openDayQuickAdd(event,'${iso}')" ondragover="agendaDragOver(event)" ondragleave="agendaDragLeave(event)" ondrop="dropDayAgendaItem(event,'${iso}')"><div class="day-task-list"></div><p class="day-collage-empty">Seu espaço está livre. Clique para criar uma demanda ou cole adesivos, imagens e post-its.</p></div></div></div>`;
   renderDailyCollage(iso);
 }
 function dayCanvasPoint(event,board){const rect=board.getBoundingClientRect();return {x:Math.max(0,Math.min(88,(event.clientX-rect.left)/rect.width*100)),y:Math.max(0,Math.min(88,(event.clientY-rect.top)/rect.height*100))};}
@@ -6800,19 +6802,19 @@ let nextStickerColor='var(--note-1)',activeStickerDate=null;
 const STICKER_PRESETS=[];
 function stickerAsset(id){return (state.stickerLibrary||[]).find(asset=>asset.id===id)||STICKER_PRESETS.find(asset=>asset.id===id&&!state.hiddenStickerPresets.includes(id));}
 function stickerCollection(date=null){if(date){if(!Array.isArray(state.dailyCollages[date]))state.dailyCollages[date]=[];return state.dailyCollages[date];}return state.floatingStickers;}
-function addStickerInstance(asset,date=activeStickerDate){if(!asset)return;const scoped=Boolean(date),items=stickerCollection(scoped?date:null);items.push({id:uid(),type:asset.type,libraryId:asset.id,src:asset.type==='image'?asset.src:'',x:scoped?55+Math.random()*16:8+Math.random()*18,y:8+Math.random()*18,w:asset.type==='image'?132:180,h:asset.type==='image'?132:148,color:asset.color||nextStickerColor,text:asset.type==='note'?(asset.text||''):undefined,date:scoped?date:undefined});save();if(scoped)renderDailyCollage(date);else renderFloatingStickers();renderStickerGallery();}
+function addStickerInstance(asset,date=activeStickerDate){if(!asset)return;const scoped=Boolean(date),scope=scoped?'day:'+date:'view:'+activeStickerView(),items=stickerCollection(scoped?date:null),position=nextStickerPosition(scope);items.push({id:uid(),type:asset.type,libraryId:asset.id,src:asset.type==='image'?asset.src:'',scope,view:scoped?'':activeStickerView(),px:position.x,py:position.y,x:0,y:0,w:asset.type==='image'?132:180,h:asset.type==='image'?132:148,color:asset.color||nextStickerColor,text:asset.type==='note'?(asset.text||''):undefined,date:scoped?date:undefined});save();renderAllStickerScopes();renderStickerGallery();}
 function createStickerNote(date=activeStickerDate){const asset={id:uid(),type:'note',color:nextStickerColor,text:'',available:true,name:'Post-it'};state.stickerLibrary.push(asset);addStickerInstance(asset,date);}
 function uploadStickerForDate(date){activeStickerDate=date;document.getElementById('sticker-file').click();}
 function openStickerGalleryForDate(date){activeStickerDate=date;const pop=document.getElementById('sticker-popover'),launcher=document.getElementById('sticker-launcher');pop.hidden=false;launcher.setAttribute('aria-expanded','true');renderStickerGallery();}
-function removeStickerAsset(id){const preset=STICKER_PRESETS.some(x=>x.id===id);if(preset){if(!state.hiddenStickerPresets.includes(id))state.hiddenStickerPresets.push(id);}else{const asset=stickerAsset(id);if(!asset)return;[...(state.floatingStickers||[]),...Object.values(state.dailyCollages||{}).flat()].filter(item=>item.libraryId===id).forEach(item=>{if(asset.type==='image')item.src=item.src||asset.src;else{item.color=item.color||asset.color;item.text=item.text??asset.text;}delete item.libraryId;});state.stickerLibrary=state.stickerLibrary.filter(item=>item.id!==id);}save();renderStickerGallery();renderFloatingStickers();if(document.getElementById('day-collage-board'))renderDailyCollage(document.getElementById('day-collage-board').dataset.date);}
+function removeStickerAsset(id){const preset=STICKER_PRESETS.some(x=>x.id===id);if(preset){if(!state.hiddenStickerPresets.includes(id))state.hiddenStickerPresets.push(id);}else{const asset=stickerAsset(id);if(!asset)return;[...(state.floatingStickers||[]),...Object.values(state.dailyCollages||{}).flat()].filter(item=>item.libraryId===id).forEach(item=>{if(asset.type==='image')item.src=item.src||asset.src;else{item.color=item.color||asset.color;item.text=item.text??asset.text;}delete item.libraryId;});state.stickerLibrary=state.stickerLibrary.filter(item=>item.id!==id);}save();renderStickerGallery();renderAllStickerScopes();}
 function renderStickerGallery(){const list=document.getElementById('sticker-gallery-list');if(!list)return;const assets=(state.stickerLibrary||[]).filter(x=>x.available!==false&&!String(x.id).startsWith('preset-'));if(!assets.length){list.innerHTML='<div class="sticker-gallery-empty">Sua galeria está vazia. Crie um post-it ou envie uma imagem para começar.</div>';return;}list.innerHTML=assets.map(asset=>{const preset=asset.id.startsWith('preset-'),preview=asset.type==='image'?`<img class="${preset?'preset-art':''}" src="${asset.src||''}" alt="">`:`${escapeHtml((asset.text||'')||'Post-it')}`;return `<article class="sticker-gallery-item"><div class="sticker-gallery-preview" style="${asset.type==='note'?`background:${escapeHtml(asset.color||'var(--note-1)')}`:''}">${preview}</div><footer><span>${escapeHtml(asset.name|| (asset.type==='image'?'Imagem':'Post-it'))}</span><button type="button" data-use-sticker="${escapeHtml(asset.id)}">Colar</button><button type="button" class="sticker-remove-asset" data-remove-sticker="${escapeHtml(asset.id)}" aria-label="Remover ${escapeHtml(asset.name||'sticker')} da galeria" title="Remover da galeria">×</button></footer></article>`;}).join('');list.querySelectorAll('[data-use-sticker]').forEach(button=>button.addEventListener('click',()=>addStickerInstance(stickerAsset(button.dataset.useSticker),activeStickerDate)));list.querySelectorAll('[data-remove-sticker]').forEach(button=>button.addEventListener('click',()=>removeStickerAsset(button.dataset.removeSticker)));}
-function renderStickerItems(container,items,date=null){if(!container)return;container.querySelectorAll('.floating-sticker').forEach(x=>x.remove());const scoped=Boolean(date);items.forEach((item,index)=>{const asset=stickerAsset(item.libraryId),imageSrc=item.src||asset?.src||'',card=document.createElement('article');card.className='floating-sticker '+(item.type==='image'?'image-sticker':'note-sticker')+(String(item.libraryId||'').startsWith('preset-')?' preset-sticker':'');card.dataset.id=item.id;card.style.left=(Number.isFinite(Number(item.x))?Number(item.x):8)+'%';card.style.top=(Number.isFinite(Number(item.y))?Number(item.y):10)+'%';card.style.width=(Number(item.w)|| (item.type==='image'?132:180))+'px';card.style.height=(Number(item.h)|| (item.type==='image'?132:148))+'px';card.style.zIndex=String(index+1);if(item.type==='image'){card.innerHTML='<img class="sticker-image" alt="Imagem decorativa"><button class="sticker-delete" type="button" aria-label="Apagar sticker">×</button><span class="sticker-resize" role="button" aria-label="Redimensionar sticker" tabindex="0"></span>';card.querySelector('img').src=imageSrc;}else{card.innerHTML='<button class="sticker-grip" type="button" aria-label="Mover post-it">⠿</button><button class="sticker-delete" type="button" aria-label="Apagar post-it">×</button><textarea class="sticker-text" aria-label="Texto do post-it" placeholder="Escreva aqui..."></textarea><span class="sticker-resize" role="button" aria-label="Redimensionar post-it" tabindex="0"></span>';card.style.background=item.color||asset?.color||'var(--note-1)';const textarea=card.querySelector('textarea');textarea.value=item.text??asset?.text??'';textarea.addEventListener('input',e=>{item.text=e.target.value;save();});}const remove=()=>{const target=stickerCollection(date);const at=target.findIndex(x=>x.id===item.id);if(at>=0)target.splice(at,1);save();scoped?renderDailyCollage(date):renderFloatingStickers();};card.querySelector('.sticker-delete').addEventListener('pointerdown',e=>e.stopPropagation());card.querySelector('.sticker-delete').addEventListener('click',remove);const dragHandle=item.type==='image'?card:card.querySelector('.sticker-grip');dragHandle.addEventListener('pointerdown',e=>{if(e.target.closest('button,.sticker-resize,textarea')&&dragHandle===card)return;e.preventDefault();card.style.zIndex=String(100+Date.now()%1000);const startX=e.clientX,startY=e.clientY,left=card.offsetLeft,top=card.offsetTop,rect=bounds(),width=scoped?container.clientWidth:innerWidth,height=scoped?container.clientHeight:innerHeight;dragHandle.setPointerCapture(e.pointerId);const move=m=>{const maxX=Math.max(0,width-card.offsetWidth),maxY=Math.max(0,height-card.offsetHeight);card.style.left=Math.min(maxX,Math.max(0,left+m.clientX-startX))/width*100+'%';card.style.top=Math.min(maxY,Math.max(0,top+m.clientY-startY))/height*100+'%';};const end=()=>{dragHandle.removeEventListener('pointermove',move);dragHandle.removeEventListener('pointerup',end);dragHandle.removeEventListener('pointercancel',end);item.x=parseFloat(card.style.left);item.y=parseFloat(card.style.top);save();};dragHandle.addEventListener('pointermove',move);dragHandle.addEventListener('pointerup',end);dragHandle.addEventListener('pointercancel',end);});const resize=card.querySelector('.sticker-resize');resize.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();resize.setPointerCapture(e.pointerId);const sx=e.clientX,sy=e.clientY,sw=card.offsetWidth,sh=card.offsetHeight;const move=m=>{card.style.width=Math.max(item.type==='image'?55:120,Math.min(460,sw+m.clientX-sx))+'px';card.style.height=Math.max(item.type==='image'?55:110,Math.min(500,sh+m.clientY-sy))+'px';};const end=()=>{resize.removeEventListener('pointermove',move);resize.removeEventListener('pointerup',end);resize.removeEventListener('pointercancel',end);item.w=card.offsetWidth;item.h=card.offsetHeight;save();};resize.addEventListener('pointermove',move);resize.addEventListener('pointerup',end);resize.addEventListener('pointercancel',end);});container.appendChild(card);});}
+
 function widgetItems(){return [...(state.floatingStickers||[]),...Object.values(state.dailyCollages||{}).flat()].filter(item=>item.type==='widget');}
 function findWidget(id){return widgetItems().find(item=>String(item.id)===String(id));}
 function createStickerWidget(kind,date=activeStickerDate){
   const specs={clock:{name:'Relógio',w:190,h:145},weather:{name:'Clima',w:230,h:210},pomodoro:{name:'Pomodoro',w:210,h:220}};
   const spec=specs[kind];if(!spec)return;
-  const scoped=Boolean(date),item={id:uid(),type:'widget',widgetType:kind,name:spec.name,x:scoped?57:10+(stickerCollection(scoped?date:null).length%6)*5,y:10+(stickerCollection(scoped?date:null).length%6)*7,w:spec.w,h:spec.h,date:scoped?date:undefined};
+  const scoped=Boolean(date),scope=scoped?'day:'+date:'view:'+activeStickerView(),spot=nextStickerPosition(scope),item={id:uid(),type:'widget',widgetType:kind,name:spec.name,scope,view:scoped?'':activeStickerView(),px:spot.x,py:spot.y,x:0,y:0,w:spec.w,h:spec.h,date:scoped?date:undefined};
   if(kind==='weather'){item.city='';item.weather=null;}
   if(kind==='pomodoro'){item.focusMinutes=25;item.breakMinutes=5;item.mode='Foco';item.remaining=1500;item.endAt=0;item.running=false;}
   stickerCollection(scoped?date:null).push(item);save();if(scoped)renderDailyCollage(date);else renderFloatingStickers();renderStickerGallery();
@@ -6821,7 +6823,7 @@ function widgetWeatherIcon(code,isDay=1){if(code===0)return isDay?'☀️':'🌙
 function widgetWeatherText(code){if(code===0)return 'Céu limpo';if([1,2].includes(code))return 'Parcialmente nublado';if(code===3)return 'Nublado';if([45,48].includes(code))return 'Neblina';if([51,53,55,56,57].includes(code))return 'Garoa';if([61,63,65,66,67,80,81,82].includes(code))return 'Chuva';if([71,73,75,77,85,86].includes(code))return 'Neve';if([95,96,99].includes(code))return 'Trovoada';return 'Condição atual';}
 async function loadWidgetWeather(id,card){const item=findWidget(id),input=card?.querySelector('.widget-weather-form input'),status=card?.querySelector('.widget-weather-status');if(!item||!input||!status)return;const city=input.value.trim();if(!city){status.textContent='Digite uma cidade para consultar.';input.focus();return;}item.city=city;status.textContent='Buscando clima…';save();try{const geoUrl=`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=pt&format=json`,geoResponse=await fetch(geoUrl);if(!geoResponse.ok)throw new Error('Não consegui localizar essa cidade.');const geo=await geoResponse.json(),place=geo.results?.[0];if(!place)throw new Error('Cidade não encontrada. Confira o nome.');const forecastUrl=`https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&current=temperature_2m,apparent_temperature,relative_humidity_2m,is_day,weather_code&timezone=auto`,weatherResponse=await fetch(forecastUrl);if(!weatherResponse.ok)throw new Error('Não consegui atualizar a previsão agora.');const result=await weatherResponse.json(),current=result.current;item.city=[place.name,place.admin1].filter(Boolean).join(', ');item.weather={temperature:Math.round(current.temperature_2m),feelsLike:Math.round(current.apparent_temperature),humidity:current.relative_humidity_2m,code:current.weather_code,isDay:current.is_day,updatedAt:Date.now()};save();const name=card.querySelector('.widget-weather-city'),icon=card.querySelector('.widget-weather-icon'),temp=card.querySelector('.widget-weather-temp'),meta=card.querySelector('.widget-weather-meta');if(name)name.textContent=item.city;if(icon)icon.textContent=widgetWeatherIcon(item.weather.code,item.weather.isDay);if(temp)temp.textContent=`${item.weather.temperature}°`;if(meta)meta.textContent=`${widgetWeatherText(item.weather.code)} · Sensação ${item.weather.feelsLike}° · Umidade ${item.weather.humidity}%`;status.textContent='';}catch(error){status.textContent=error.message||'Clima indisponível. Tente novamente.';}}
 function pomodoroSeconds(item){return item.running&&item.endAt?Math.max(0,Math.ceil((item.endAt-Date.now())/1000)):Math.max(0,Number(item.remaining)||0);}
-function pomodoroAction(id,action){const item=findWidget(id);if(!item)return;if(action==='toggle'){if(item.running){item.remaining=pomodoroSeconds(item);item.running=false;item.endAt=0;}else{if(!item.remaining){item.mode=item.mode==='Foco'?'Pausa':'Foco';item.remaining=(item.mode==='Foco'?item.focusMinutes:item.breakMinutes)*60;}item.running=true;item.endAt=Date.now()+item.remaining*1000;}}else if(action==='reset'){item.running=false;item.endAt=0;item.mode='Foco';item.remaining=item.focusMinutes*60;}else if(action==='skip'){item.running=false;item.endAt=0;item.mode=item.mode==='Foco'?'Pausa':'Foco';item.remaining=(item.mode==='Foco'?item.focusMinutes:item.breakMinutes)*60;}save();if(item.date)renderDailyCollage(item.date);else renderFloatingStickers();}
+function pomodoroAction(id,action){const item=findWidget(id);if(!item)return;if(action==='toggle'){if(item.running){item.remaining=pomodoroSeconds(item);item.running=false;item.endAt=0;}else{if(!item.remaining){item.mode=item.mode==='Foco'?'Pausa':'Foco';item.remaining=(item.mode==='Foco'?item.focusMinutes:item.breakMinutes)*60;}item.running=true;item.endAt=Date.now()+item.remaining*1000;}}else if(action==='reset'){item.running=false;item.endAt=0;item.mode='Foco';item.remaining=item.focusMinutes*60;}else if(action==='skip'){item.running=false;item.endAt=0;item.mode=item.mode==='Foco'?'Pausa':'Foco';item.remaining=(item.mode==='Foco'?item.focusMinutes:item.breakMinutes)*60;}save();renderAllStickerScopes();}
 function updateWidgetDisplays(){const now=new Date();document.querySelectorAll('.widget-sticker[data-widget-type="clock"]').forEach(card=>{const time=card.querySelector('.widget-clock-time'),date=card.querySelector('.widget-clock-date');if(time)time.textContent=now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});if(date)date.textContent=now.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});});document.querySelectorAll('.widget-sticker[data-widget-type="pomodoro"]').forEach(card=>{const item=findWidget(card.dataset.widgetId);if(!item)return;let remaining=pomodoroSeconds(item);if(item.running&&remaining===0){item.running=false;item.endAt=0;item.mode=item.mode==='Foco'?'Pausa':'Foco';item.remaining=(item.mode==='Foco'?item.focusMinutes:item.breakMinutes)*60;remaining=item.remaining;save();}const clock=card.querySelector('.widget-pomodoro-face'),mode=card.querySelector('.widget-pomodoro-mode'),toggle=card.querySelector('[data-pomodoro-action="toggle"]');if(clock)clock.textContent=`${String(Math.floor(remaining/60)).padStart(2,'0')}:${String(remaining%60).padStart(2,'0')}`;if(mode)mode.textContent=item.mode==='Foco'?'Hora de focar':'Hora da pausa';if(toggle)toggle.textContent=item.running?'Pausar':'Começar';});}
 function widgetMarkup(item){
   const head=`<div class="widget-head"><button type="button" class="widget-grip" aria-label="Mover widget">⠿</button><span>${escapeHtml(item.name||'Widget')}</span><button class="sticker-delete" type="button" aria-label="Apagar widget">×</button></div>`;
@@ -6830,11 +6832,136 @@ function widgetMarkup(item){
   const remaining=pomodoroSeconds(item),time=`${String(Math.floor(remaining/60)).padStart(2,'0')}:${String(remaining%60).padStart(2,'0')}`;
   return `${head}<div class="widget-pomodoro-mode">${item.mode==='Pausa'?'Hora da pausa':'Hora de focar'}</div><div class="widget-pomodoro-face">${time}</div><div class="widget-pomodoro-controls"><button type="button" data-pomodoro-action="toggle">${item.running?'Pausar':'Começar'}</button><button type="button" data-pomodoro-action="reset">Reiniciar</button><button type="button" data-pomodoro-action="skip">Próximo</button></div>`;
 }
-function renderStickerItems(container,items,date=null){if(!container)return;container.querySelectorAll('.floating-sticker').forEach(x=>x.remove());const scoped=Boolean(date);items.forEach((item,index)=>{const asset=stickerAsset(item.libraryId),imageSrc=item.src||asset?.src||'',card=document.createElement('article');const isWidget=item.type==='widget';card.className='floating-sticker '+(isWidget?'widget-sticker':item.type==='image'?'image-sticker':'note-sticker')+(String(item.libraryId||'').startsWith('preset-')?' preset-sticker':'');card.dataset.id=item.id;if(isWidget){card.dataset.widgetId=item.id;card.dataset.widgetType=item.widgetType;card.innerHTML=widgetMarkup(item);}else if(item.type==='image'){card.innerHTML='<img class="sticker-image" alt="Imagem decorativa"><button class="sticker-delete" type="button" aria-label="Apagar sticker">×</button><span class="sticker-resize" role="button" aria-label="Redimensionar sticker" tabindex="0"></span>';card.querySelector('img').src=imageSrc;}else{card.innerHTML='<button class="sticker-grip" type="button" aria-label="Mover post-it">⠿</button><button class="sticker-delete" type="button" aria-label="Apagar post-it">×</button><textarea class="sticker-text" aria-label="Texto do post-it" placeholder="Escreva aqui..."></textarea><span class="sticker-resize" role="button" aria-label="Redimensionar post-it" tabindex="0"></span>';card.style.background=item.color||asset?.color||'var(--note-1)';const textarea=card.querySelector('textarea');textarea.value=item.text??asset?.text??'';textarea.addEventListener('input',e=>{item.text=e.target.value;save();});}card.style.left=(Number.isFinite(Number(item.x))?Number(item.x):8)+'%';card.style.top=(Number.isFinite(Number(item.y))?Number(item.y):10)+'%';card.style.width=(Number(item.w)||(isWidget?210:item.type==='image'?132:180))+'px';card.style.height=(Number(item.h)||(isWidget?180:item.type==='image'?132:148))+'px';card.style.zIndex=String(index+1);const remove=()=>{const target=stickerCollection(date);const at=target.findIndex(x=>x.id===item.id);if(at>=0)target.splice(at,1);save();scoped?renderDailyCollage(date):renderFloatingStickers();};const deleteButton=card.querySelector('.sticker-delete');deleteButton?.addEventListener('pointerdown',e=>e.stopPropagation());deleteButton?.addEventListener('click',remove);if(isWidget&&item.widgetType==='weather'){const form=card.querySelector('.widget-weather-form');form.addEventListener('submit',e=>{e.preventDefault();loadWidgetWeather(item.id,card);});form.querySelector('input').addEventListener('change',e=>{item.city=e.target.value.trim();save();});}if(isWidget&&item.widgetType==='pomodoro')card.querySelectorAll('[data-pomodoro-action]').forEach(button=>button.addEventListener('click',e=>{e.stopPropagation();pomodoroAction(item.id,button.dataset.pomodoroAction);}));const dragHandle=item.type==='image'?card:card.querySelector('.widget-grip,.sticker-grip');if(!item.pinned)dragHandle?.addEventListener('pointerdown',e=>{if(e.target.closest('button.sticker-delete,.sticker-resize,textarea,input'))return;e.preventDefault();card.style.zIndex=String(100+Date.now()%1000);const startX=e.clientX,startY=e.clientY,left=card.offsetLeft,top=card.offsetTop,width=scoped?container.clientWidth:innerWidth,height=scoped?container.clientHeight:innerHeight;dragHandle.setPointerCapture(e.pointerId);const move=m=>{const maxX=Math.max(0,width-card.offsetWidth),maxY=Math.max(0,height-card.offsetHeight);card.style.left=Math.min(maxX,Math.max(0,left+m.clientX-startX))/width*100+'%';card.style.top=Math.min(maxY,Math.max(0,top+m.clientY-startY))/height*100+'%';};const end=()=>{dragHandle.removeEventListener('pointermove',move);dragHandle.removeEventListener('pointerup',end);dragHandle.removeEventListener('pointercancel',end);item.x=parseFloat(card.style.left);item.y=parseFloat(card.style.top);save();};dragHandle.addEventListener('pointermove',move);dragHandle.addEventListener('pointerup',end);dragHandle.addEventListener('pointercancel',end);});const resize=card.querySelector('.sticker-resize');resize?.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();resize.setPointerCapture(e.pointerId);const sx=e.clientX,sy=e.clientY,sw=card.offsetWidth,sh=card.offsetHeight;const move=m=>{card.style.width=Math.max(item.type==='image'?55:120,Math.min(460,sw+m.clientX-sx))+'px';card.style.height=Math.max(item.type==='image'?55:110,Math.min(500,sh+m.clientY-sy))+'px';};const end=()=>{resize.removeEventListener('pointermove',move);resize.removeEventListener('pointerup',end);resize.removeEventListener('pointercancel',end);item.w=card.offsetWidth;item.h=card.offsetHeight;save();};resize.addEventListener('pointermove',move);resize.addEventListener('pointerup',end);resize.addEventListener('pointercancel',end);});const pin=document.createElement("button");pin.type="button";pin.className="sticker-pin";pin.textContent="";pin.title=item.pinned?"Desafixar posição":"Fixar posição";pin.setAttribute("aria-label",pin.title);pin.setAttribute("aria-pressed",String(Boolean(item.pinned)));card.classList.toggle("is-pinned",Boolean(item.pinned));pin.addEventListener("pointerdown",e=>e.stopPropagation());pin.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();item.pinned=!item.pinned;save();scoped?renderDailyCollage(date):renderFloatingStickers();});card.appendChild(pin);container.appendChild(card);});updateWidgetDisplays();}
+// ============================================================
+// POSICIONAMENTO E PERSISTÊNCIA DOS STICKERS
+// Cada sticker guarda o container (data-sticker-scope) e a página
+// (data-sticker-view) em que foi colocado. A posição é sempre
+// relativa ao container, então não muda ao rolar ou trocar de página.
+// ============================================================
+function stickerLayer(){return document.getElementById('sticker-layer');}
+function activeStickerView(){const view=document.querySelector('.view.active');return view?String(view.id||'').replace(/^view-/,''):'';}
+function viewForScope(scope){if(scope==='layer')return '';const view=document.querySelector('.view.active');const saved=view?view.id:'';return saved?String(saved).replace(/^view-/,''):'';}
+function stickerScopeForNode(node){const container=node&&node.closest?node.closest('[data-sticker-scope]'):null;return container?String(container.dataset.stickerScope||''):'';}
+function normalizeStickerScope(item){if(!item)return item;if(item.date)item.scope='day:'+item.date;if(!item.scope||item.scope==='home'||item.scope==='global')item.scope='layer';if(item.scope!=='layer'){item.view='';}else if(!item.view)item.view='';return item;}
+function stickerScopeContainer(scope){
+  if(!scope||scope==='layer')return stickerLayer();
+  if(String(scope).startsWith('day:')){
+    const date=String(scope).slice(4);
+    const board=document.getElementById('day-collage-board');
+    if(board&&board.dataset.date===date)return board;
+    return null;
+  }
+  return document.querySelector('[data-sticker-scope="'+String(scope).replace(/"/g,'')+'"]');
+}
+function allStickerItems(){return [...(state.floatingStickers||[]),...Object.values(state.dailyCollages||{}).flat()];}
+function normalizeAllStickers(){allStickerItems().forEach(normalizeStickerScope);}
+function nextStickerPosition(scope){const container=stickerScopeContainer(scope),count=(state.floatingStickers||[]).length;const width=container&&container.clientWidth?container.clientWidth:window.innerWidth;const height=container&&container.clientHeight?container.clientHeight:window.innerHeight;const x=(72+(count%5)*3)/100*width,y=(84+Math.floor(count/5)%5*3)/100*height;return {x:Math.round(Math.max(8,Math.min(x,width-150))),y:Math.round(Math.max(8,Math.min(y,height-160)))};}
+function stickerPercentX(item,container){if(Number.isFinite(Number(item.px))&&container&&container.clientWidth)return Number(item.px)/container.clientWidth*100;const v=Number(item.x);return Number.isFinite(v)?v:8;}
+function stickerPercentY(item,container){if(Number.isFinite(Number(item.py))&&container&&container.clientHeight)return Number(item.py)/container.clientHeight*100;const v=Number(item.y);return Number.isFinite(v)?v:10;}
+function setStickerNodePosition(node,item){
+  const container=node.parentElement;
+  node.style.left=stickerPercentX(item,container).toFixed(3)+'%';
+  node.style.top=stickerPercentY(item,container).toFixed(3)+'%';
+}
+function saveStickerNodePosition(node,item){
+  const container=node.parentElement;
+  const width=container&&container.clientWidth||window.innerWidth;
+  const height=container&&container.clientHeight||window.innerHeight;
+  const left=node.offsetLeft,top=node.offsetTop;
+  item.px=Math.round(left);
+  item.py=Math.round(top);
+  item.x=Number((left/width*100).toFixed(3));
+  item.y=Number((top/height*100).toFixed(3));
+  item.w=node.offsetWidth;
+  item.h=node.offsetHeight;
+  save();
+}
+function reflowStickers(){
+  document.querySelectorAll('.floating-sticker[data-id]').forEach(node=>{
+    const item=allStickerItems().find(x=>String(x.id)===String(node.dataset.id));
+    if(!item)return;
+    normalizeStickerScope(item);
+    const container=node.parentElement;
+    if(!container)return;
+    const width=container.clientWidth||1,height=container.clientHeight||1;
+    const left=Math.max(0,Math.min(width-node.offsetWidth,node.offsetLeft));
+    const top=Math.max(0,Math.min(height-node.offsetHeight,node.offsetTop));
+    item.px=Math.round(left);item.py=Math.round(top);
+    item.x=Number((left/width*100).toFixed(3));item.y=Number((top/height*100).toFixed(3));
+    setStickerNodePosition(node,item);
+  });
+}
+function renderStickerScope(scope){
+  const container=stickerScopeContainer(scope);
+  if(!container)return;
+  const items=(state.floatingStickers||[]).filter(item=>{normalizeStickerScope(item);return String(item.scope||'layer')===String(scope);});
+  renderStickerItems(container,items,scope);
+}
+function renderAllStickerScopes(){
+  normalizeAllStickers();
+  renderStickerScope('layer');
+  const board=document.getElementById('day-collage-board');
+  if(board&&board.dataset.date)renderStickerScope('day:'+board.dataset.date);
+}
+function renderStickersEverywhere(){renderAllStickerScopes();}
+
+function renderStickerItems(container,items,date=null){if(!container)return;container.querySelectorAll('.floating-sticker').forEach(x=>x.remove());const scoped=Boolean(date),scopeAttr=container.dataset&&container.dataset.stickerScope?String(container.dataset.stickerScope):(date?'day:'+date:'layer');items.forEach((item,index)=>{normalizeStickerScope(item);const asset=stickerAsset(item.libraryId),imageSrc=item.src||asset?.src||'',card=document.createElement('article');const isWidget=item.type==='widget';card.className='floating-sticker '+(isWidget?'widget-sticker':item.type==='image'?'image-sticker':'note-sticker')+(String(item.libraryId||'').startsWith('preset-')?' preset-sticker':'');card.dataset.id=item.id;card.dataset.scope=scopeAttr;if(isWidget){card.dataset.widgetId=item.id;card.dataset.widgetType=item.widgetType;card.innerHTML=widgetMarkup(item);}else if(item.type==='image'){card.innerHTML='<img class="sticker-image" alt="Imagem decorativa"><button class="sticker-delete" type="button" aria-label="Apagar sticker">×</button><span class="sticker-resize" role="button" aria-label="Redimensionar sticker" tabindex="0"></span>';card.querySelector('img').src=imageSrc;}else{card.innerHTML='<button class="sticker-grip" type="button" aria-label="Mover post-it">⠿</button><button class="sticker-delete" type="button" aria-label="Apagar post-it">×</button><textarea class="sticker-text" aria-label="Texto do post-it" placeholder="Escreva aqui..."></textarea><span class="sticker-resize" role="button" aria-label="Redimensionar post-it" tabindex="0"></span>';card.style.background=item.color||asset?.color||'var(--note-1)';const textarea=card.querySelector('textarea');textarea.value=item.text??asset?.text??'';textarea.addEventListener('input',e=>{item.text=e.target.value;save();});}card.style.width=(Number(item.w)||(isWidget?210:item.type==='image'?132:180))+'px';card.style.height=(Number(item.h)||(isWidget?180:item.type==='image'?132:148))+'px';card.style.zIndex=String(index+1);const remove=()=>{removeStickerById(item.id);save();renderAllStickerScopes();renderStickerGallery();};const deleteButton=card.querySelector('.sticker-delete');deleteButton?.addEventListener('pointerdown',e=>e.stopPropagation());deleteButton?.addEventListener('click',remove);if(isWidget&&item.widgetType==='weather'){const form=card.querySelector('.widget-weather-form');form.addEventListener('submit',e=>{e.preventDefault();loadWidgetWeather(item.id,card);});form.querySelector('input').addEventListener('change',e=>{item.city=e.target.value.trim();save();});}if(isWidget&&item.widgetType==='pomodoro')card.querySelectorAll('[data-pomodoro-action]').forEach(button=>button.addEventListener('click',e=>{e.stopPropagation();pomodoroAction(item.id,button.dataset.pomodoroAction);}));const dragHandle=item.type==='image'?card:card.querySelector('.widget-grip,.sticker-grip');if(!item.pinned)dragHandle?.addEventListener('pointerdown',e=>{if(e.target.closest('button.sticker-delete,.sticker-resize,textarea,input'))return;e.preventDefault();card.style.zIndex=String(100+Date.now()%1000);const startX=e.clientX,startY=e.clientY,left=card.offsetLeft,top=card.offsetTop,width=container.clientWidth||window.innerWidth,height=container.clientHeight||window.innerHeight;try{dragHandle.setPointerCapture(e.pointerId);}catch(_){}const move=m=>{const maxX=Math.max(0,width-card.offsetWidth),maxY=Math.max(0,height-card.offsetHeight);card.style.left=Math.min(maxX,Math.max(0,left+m.clientX-startX))/width*100+'%';card.style.top=Math.min(maxY,Math.max(0,top+m.clientY-startY))+'px';};const end=()=>{dragHandle.removeEventListener('pointermove',move);dragHandle.removeEventListener('pointerup',end);dragHandle.removeEventListener('pointercancel',end);saveStickerNodePosition(card,item);};dragHandle.addEventListener('pointermove',move);dragHandle.addEventListener('pointerup',end);dragHandle.addEventListener('pointercancel',end);});const resize=card.querySelector('.sticker-resize');resize?.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();resize.setPointerCapture(e.pointerId);const sx=e.clientX,sy=e.clientY,sw=card.offsetWidth,sh=card.offsetHeight;const move=m=>{card.style.width=Math.max(item.type==='image'?55:120,Math.min(460,sw+m.clientX-sx))+'px';card.style.height=Math.max(item.type==='image'?55:110,Math.min(500,sh+m.clientY-sy))+'px';};const end=()=>{resize.removeEventListener('pointermove',move);resize.removeEventListener('pointerup',end);resize.removeEventListener('pointercancel',end);saveStickerNodePosition(card,item);};resize.addEventListener('pointermove',move);resize.addEventListener('pointerup',end);resize.addEventListener('pointercancel',end);});const pin=document.createElement("button");pin.type="button";pin.className="sticker-pin";pin.textContent="";pin.title=item.pinned?"Desafixar posição":"Fixar posição";pin.setAttribute("aria-label",pin.title);pin.setAttribute("aria-pressed",String(Boolean(item.pinned)));card.classList.toggle("is-pinned",Boolean(item.pinned));pin.addEventListener("pointerdown",e=>e.stopPropagation());pin.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();item.pinned=!item.pinned;save();renderAllStickerScopes();});card.appendChild(pin);container.appendChild(card);setStickerNodePosition(card,item);});updateWidgetDisplays();}
 setInterval(updateWidgetDisplays,1000);
-function renderFloatingStickers(){const layer=document.getElementById('sticker-layer');if(layer)renderStickerItems(layer,state.floatingStickers||[]);}
-function renderDailyCollage(date){const board=document.getElementById('day-collage-board');if(!board||board.dataset.date!==date)return;const items=stickerCollection(date);const empty=board.querySelector('.day-collage-empty');if(empty)empty.hidden=items.length>0||board.querySelectorAll('.agenda-event').length>0;renderStickerItems(board,items,date);}
-function bindStickerGallery(){const pop=document.getElementById('sticker-popover'),launcher=document.getElementById('sticker-launcher'),file=document.getElementById('sticker-file');const setOpen=open=>{pop.hidden=!open;launcher.setAttribute('aria-expanded',String(open));if(open){activeStickerDate=null;renderStickerGallery();}else activeStickerDate=null;};launcher.addEventListener('click',()=>setOpen(pop.hidden));document.getElementById('sticker-popover-close').addEventListener('click',()=>setOpen(false));document.getElementById('sticker-add-note').addEventListener('click',()=>createStickerNote(activeStickerDate));document.getElementById('sticker-add-image').addEventListener('click',()=>file.click());document.getElementById('sticker-add-image-widget')?.addEventListener('click',()=>file.click());document.querySelectorAll('[data-create-widget]').forEach(button=>button.addEventListener('click',()=>createStickerWidget(button.dataset.createWidget,activeStickerDate)));document.querySelectorAll('[data-sticker-color]').forEach(b=>b.addEventListener('click',()=>{nextStickerColor=b.dataset.stickerColor;document.querySelectorAll('[data-sticker-color]').forEach(x=>x.style.outline=x===b?'2px solid var(--ui-accent)':'');}));file.addEventListener('change',e=>{const f=e.target.files&&e.target.files[0];if(!f)return;if(!f.type.startsWith('image/')){alert('Escolha um arquivo de imagem.');file.value='';return;}const date=activeStickerDate,reader=new FileReader();reader.onload=()=>{const image=new Image();image.onload=()=>{const scale=Math.min(1,520/Math.max(image.width,image.height)),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);const asset={id:uid(),type:'image',src:canvas.toDataURL('image/png'),available:true,name:'Imagem enviada'};state.stickerLibrary.push(asset);addStickerInstance(asset,date);file.value='';};image.onerror=()=>{alert('Não consegui abrir essa imagem.');file.value='';};image.src=reader.result;};reader.onerror=()=>alert('Não consegui ler essa imagem.');reader.readAsDataURL(f);});}
+function renderFloatingStickers(){normalizeAllStickers();const layer=stickerLayer();if(layer)renderStickerScope('layer');}
+function renderDailyCollage(date){const board=document.getElementById('day-collage-board');if(!board||board.dataset.date!==date)return;const items=stickerCollection(date);const empty=board.querySelector('.day-collage-empty');if(empty)empty.hidden=items.length>0||board.querySelectorAll('.agenda-event').length>0;renderStickerScope('day:'+date);}
+// ---------- upload de imagem de sticker / widget (versão robusta) ----------
+function stickerErrorText(err){const msg=String(err&&err.message||err||'');if(/quota|exceed|storage|full/i.test(msg))return 'O navegador está sem espaço para salvar imagens. Remova stickers antigos da galeria ou faça um backup e limpe os dados do site.';if(/security|tainted|decode/i.test(msg))return 'Essa imagem não pôde ser processada. Tente outro arquivo (PNG, JPG ou WEBP).';return msg||'Não consegui processar essa imagem.';}
+function readFileAsDataURL(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(new Error('Não consegui ler esse arquivo.'));reader.readAsDataURL(file);});}
+function loadImageElement(src){return new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>resolve(image);image.onerror=()=>reject(new Error('Não consegui abrir essa imagem.'));image.src=src;});}
+function shrinkImage(image,maxSide,quality){const scale=Math.min(1,maxSide/Math.max(image.width||1,image.height||1)),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round((image.width||1)*scale));canvas.height=Math.max(1,Math.round((image.height||1)*scale));const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0,canvas.width,canvas.height);const keepAlpha=/\.png$/i.test(image.src||'')||/^data:image\/png/i.test(image.src||'');return keepAlpha?canvas.toDataURL('image/png'):canvas.toDataURL('image/jpeg',quality||0.82);}
+async function fileToStickerData(file){
+  if(!file)throw new Error('Nenhum arquivo selecionado.');
+  if(file.type&&!file.type.startsWith('image/'))throw new Error('Escolha um arquivo de imagem (PNG, JPG ou WEBP).');
+  const raw=await readFileAsDataURL(file);
+  let image;
+  try{image=await loadImageElement(raw);}
+  catch(_){
+    if(!raw.startsWith('data:image/'))throw new Error('Esse arquivo não é uma imagem.');
+    image=await loadImageElement(raw);
+  }
+  try{return shrinkImage(image,720,0.82);}catch(_){return raw;}
+}
+async function addImageStickerFromFile(file,date=null){
+  try{
+    const src=await fileToStickerData(file);
+    const asset={id:uid(),type:'image',src,available:true,name:(file.name||'Imagem enviada').replace(/\.[^.]+$/,'').slice(0,40)||'Imagem enviada'};
+    state.stickerLibrary.push(asset);
+    addStickerInstance(asset,date);
+    renderStickerGallery();
+    if(!document.getElementById('sticker-popover').hidden)toast('Imagem adicionada.');
+    return asset;
+  }catch(error){
+    console.warn('Falha ao carregar imagem',error);
+    alert(stickerErrorText(error));
+    return null;
+  }
+}
+function bindStickerGallery(){
+  const pop=document.getElementById('sticker-popover'),launcher=document.getElementById('sticker-launcher'),file=document.getElementById('sticker-file');
+  if(!pop||!launcher||!file||launcher.dataset.bound==='1')return;
+  launcher.dataset.bound='1';
+  const setOpen=open=>{pop.hidden=!open;launcher.setAttribute('aria-expanded',String(open));if(open){activeStickerDate=null;renderStickerGallery();}else activeStickerDate=null;};
+  launcher.addEventListener('click',()=>setOpen(pop.hidden));
+  document.getElementById('sticker-popover-close').addEventListener('click',()=>setOpen(false));
+  document.getElementById('sticker-add-note').addEventListener('click',()=>createStickerNote(activeStickerDate));
+  const pickImage=()=>file.click();
+  document.getElementById('sticker-add-image').addEventListener('click',pickImage);
+  document.getElementById('sticker-add-image-widget')?.addEventListener('click',pickImage);
+  document.querySelectorAll('[data-create-widget]').forEach(button=>button.addEventListener('click',()=>createStickerWidget(button.dataset.createWidget,activeStickerDate)));
+  document.querySelectorAll('[data-sticker-color]').forEach(b=>b.addEventListener('click',()=>{nextStickerColor=b.dataset.stickerColor;document.querySelectorAll('[data-sticker-color]').forEach(x=>x.style.outline=x===b?'2px solid var(--ui-accent)':'');}));
+  file.addEventListener('change',async e=>{
+    const files=[...(e.target.files||[])].filter(f=>!f.type||f.type.startsWith('image/'));
+    if(!files.length){if(e.target.files&&e.target.files.length)alert('Escolha um arquivo de imagem.');file.value='';return;}
+    const date=activeStickerDate;
+    file.value='';
+    for(const f of files){await addImageStickerFromFile(f,date);}
+  });
+}
 
 function bindStickerDrop(){const zone=document.getElementById('sticker-add-image'),file=document.getElementById('sticker-file');if(!zone||zone.dataset.dropBound)return;zone.dataset.dropBound='1';['dragenter','dragover'].forEach(name=>zone.addEventListener(name,e=>{e.preventDefault();zone.classList.add('is-drop');}));['dragleave','dragend'].forEach(name=>zone.addEventListener(name,()=>zone.classList.remove('is-drop')));zone.addEventListener('drop',e=>{e.preventDefault();zone.classList.remove('is-drop');const image=[...(e.dataTransfer?.files||[])].find(x=>x.type.startsWith('image/'));if(!image){alert('Solte um arquivo de imagem para enviar.');return;}try{const transfer=new DataTransfer();transfer.items.add(image);file.files=transfer.files;file.dispatchEvent(new Event('change',{bubbles:true}));}catch{alert('Não consegui ler esse arquivo aqui. Use o botão para escolher uma imagem.');}});}
 
@@ -6931,7 +7058,7 @@ function bindPrefsV4(){const root=document.getElementById('view-settings');if(!r
     el.addEventListener('change',()=>{setPref(k,get(),true);if(k==='remindOn'&&el.checked&&window.Notification&&Notification.permission==='default')Notification.requestPermission().catch(()=>{});renderPrefsV4();});});
   document.getElementById('pref-accent-clear')?.addEventListener('click',()=>{setPref('accentCustom','',true);renderPrefsV4();});
   root.querySelectorAll('[data-theme-choice]').forEach(b=>b.addEventListener('click',()=>{state.appearance.accentCustom='';applyAppearanceV2();renderPrefsV4();save();}));
-  document.getElementById('hero-file')?.addEventListener('change',e=>{const f=e.target.files?.[0];if(!f||!f.type.startsWith('image/'))return;const r=new FileReader();r.onload=()=>{const img=new Image();img.onload=()=>{const sc=Math.min(1,1400/img.width),c=document.createElement('canvas');c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);c.getContext('2d').drawImage(img,0,0,c.width,c.height);state.appearance.heroImage=c.toDataURL('image/jpeg',.72);applyAppearanceV2();save();};img.src=r.result;};r.readAsDataURL(f);e.target.value='';});}
+  document.getElementById('hero-file')?.addEventListener('__old',e=>{const f=e.target.files?.[0];if(!f||!f.type.startsWith('image/'))return;const r=new FileReader();r.onload=()=>{const img=new Image();img.onload=()=>{const sc=Math.min(1,1400/img.width),c=document.createElement('canvas');c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);c.getContext('2d').drawImage(img,0,0,c.width,c.height);state.appearance.heroImage=c.toDataURL('image/jpeg',.72);applyAppearanceV2();save();};img.src=r.result;};r.readAsDataURL(f);e.target.value='';});}
 
 // ---------- ações: atrasadas, concluir, repetir, subtarefas ----------
 function findDemand(id){return (state.demands||[]).find(x=>String(x.id)===String(id));}
@@ -7025,6 +7152,7 @@ renderFloatingStickers();
 scheduleCalendarRefresh();
 setInterval(positionAgendaNowLine,30000);
 window.addEventListener('resize',positionAgendaNowLine);
+window.addEventListener('resize',()=>{if(window.__stickerResizeTimer)clearTimeout(window.__stickerResizeTimer);window.__stickerResizeTimer=setTimeout(reflowStickers,180);});
 
 document.querySelectorAll('.filter-bar .pill').forEach(p => {
   p.classList.toggle('active', p.dataset.filter === state.ui.redesTab);
@@ -7035,134 +7163,30 @@ updateRedesView();
 bindPrefsV4();renderPrefsV4();applyAppearanceV2();renderHomeToday();setInterval(checkReminders,30000);checkReminders();
 bootCloud();
 </script>
-  <!-- ================== PATCH: upload de imagem + stickers ancorados ================== -->
-<style>
-/* A camada de stickers acompanha a página (rola junto, some ao trocar de view) */
-#sticker-layer{position:absolute!important;inset:0!important;height:100%!important;pointer-events:none}
-.view{position:relative}
-#sticker-layer .floating-sticker{pointer-events:auto}
-</style>
+
+<style>.view{position:relative}#sticker-layer{display:none!important}</style>
 <script>
-(function(){
-  if (window.__plannerFixPatch) return;
-  window.__plannerFixPatch = true;
-
-  /* ---------- 1) Upload de imagem no hero (delegado: sobrevive a re-render) ---------- */
-  document.addEventListener('change', function(e){
-    if (e.target.id !== 'hero-file') return;
-    var f = e.target.files && e.target.files[0];
-    if (!f) return;
-    if (!f.type || f.type.indexOf('image/') !== 0){
-      if (window.alert) alert('Escolha um arquivo de imagem (PNG, JPG...).');
-      e.target.value = '';
-      return;
-    }
-    var reader = new FileReader();
-    reader.onload = function(){
-      var img = new Image();
-      img.onload = function(){
-        var s = Math.min(1, 1600 / Math.max(img.width, img.height));
-        var c = document.createElement('canvas');
-        c.width  = Math.max(1, Math.round(img.width  * s));
-        c.height = Math.max(1, Math.round(img.height * s));
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        var data = c.toDataURL('image/jpeg', 0.75);
-        // grava e aplica na hora, sem depender do render dos ajustes
-        try {
-          state.appearance.heroImage = data;
-          state.appearance.hero = 'image';
-        } catch(err){}
-        document.body.dataset.hero = 'image';
-        document.body.style.setProperty('--hero-img', 'url("' + data + '")');
-        var sel = document.getElementById('pref-hero');
-        if (sel) sel.value = 'image';
-        var row = document.getElementById('hero-image-row');
-        if (row) row.hidden = false;
-        if (typeof applyAppearanceV2 === 'function') { try { applyAppearanceV2(); } catch(err){} }
-        if (typeof save === 'function') { try { save(); } catch(err){} }
-        e.target.value = '';
-      };
-      img.onerror = function(){ if (window.alert) alert('Não consegui abrir essa imagem.'); e.target.value=''; };
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(f);
-  });
-
-  /* ---------- 2) Stickers/post-its ancorados à página (posição + rolagem + troca) ---------- */
-  var layer = document.getElementById('sticker-layer');
-  if (!layer) return;
-
-  // chave da página ativa (ex.: 'time' para Home, 'agenda', 'projects', 'notes'...)
-  function pageKey(){
-    var v = document.querySelector('.view.active');
-    return v ? v.id.replace(/^view-/, '') : 'time';
-  }
-  function activeView(){ return document.querySelector('.view.active'); }
-
-  // renderiza SÓ os stickers da página atual, com a camada dentro da view ativa
-  window.renderAnchoredStickers = function(){
-    var v = activeView();
-    if (!layer || !v) return;
-    if (layer.parentElement !== v) { layer.remove(); v.appendChild(layer); }
-    var key = pageKey();
-    var items = (state.floatingStickers || []).filter(function(s){
-      return (s.page || 'home') === key || (key === 'time' && !s.page);
-    });
-    if (typeof renderStickerItems === 'function'){
-      try { renderStickerItems(layer, items, null); } catch(err){}
-    }
-  };
-
-  // redireciona o render antigo (global/fixado) para o ancorado
-  window.renderFloatingStickers = function(){ renderAnchoredStickers(); };
-
-  // migra stickers antigos (sem contexto) para a Home e salva uma vez
-  try {
-    var migrated = false;
-    (state.floatingStickers || []).forEach(function(s){
-      if (!s.page) { s.page = 'home'; migrated = true; }
-    });
-    if (migrated && typeof save === 'function') save();
-  } catch(err){}
-
-  // grava a página de origem sempre que um sticker novo nasce
-  if (typeof addStickerInstance === 'function'){
-    var _add = addStickerInstance;
-    window.addStickerInstance = function(){
-      var before = {};
-      (state.floatingStickers || []).forEach(function(s){ before[s.id] = 1; });
-      var inst = _add.apply(this, arguments);
-      // 3º argumento é a data (quando existe, o sticker já vai para o mural do dia — já é ancorado)
-      var scoped = arguments.length >= 3 && arguments[2];
-      if (!scoped){
-        var created = (state.floatingStickers || []).filter(function(s){ return !before[s.id]; });
-        var target = created[0] || inst;
-        if (target && typeof target === 'object') { target.page = pageKey(); }
-        if (typeof save === 'function') { try { save(); } catch(err){} }
-      }
-      renderAnchoredStickers();
-      return inst;
-    };
-  }
-
-  // re-renderiza ao trocar de página (nav com data-view)
-  document.querySelectorAll('[data-view]').forEach(function(b){
-    b.addEventListener('click', function(){
-      setTimeout(renderAnchoredStickers, 60);
-      setTimeout(renderAnchoredStickers, 300);
-    });
-  });
-  // e também se a view ativa mudar por qualquer outro caminho
-  if (window.MutationObserver){
-    var mo = new MutationObserver(function(){
-      if (document.querySelector('.view.active') !== layer.parentElement) renderAnchoredStickers();
-    });
-    mo.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
-  }
-
-  // render inicial
-  setTimeout(renderAnchoredStickers, 150);
-})();
+/* ===== Stickers presos à página + upload de imagem do topo ===== */
+function ensureViewLayer(v){const view=document.getElementById('view-'+v);if(!view)return null;let l=null;for(const c of view.children)if(c.classList&&c.classList.contains('sticker-layer')){l=c;break;}if(!l){l=document.createElement('div');l.className='sticker-layer';l.dataset.stickerScope='view:'+v;view.appendChild(l);}return l;}
+function stickerLayer(){return ensureViewLayer(activeStickerView()||'time');}
+function normalizeStickerScope(item){if(!item)return item;if(item.date){item.scope='day:'+item.date;return item;}const s=String(item.scope||'');if(s.startsWith('view:')){item.view=s.slice(5);return item;}item.view=item.view||'time';item.scope='view:'+item.view;return item;}
+function stickerScopeContainer(scope){scope=String(scope||'');if(scope.startsWith('day:')){const d=scope.slice(4),b=document.getElementById('day-collage-board');return b&&b.dataset.date===d?b:null;}if(scope.startsWith('view:'))return ensureViewLayer(scope.slice(5));return ensureViewLayer('time');}
+function stickerCollection(date=null){if(date&&/^\d{4}-\d{2}-\d{2}$/.test(String(date))){if(!Array.isArray(state.dailyCollages[date]))state.dailyCollages[date]=[];return state.dailyCollages[date];}return state.floatingStickers;}
+function removeStickerById(id){[state.floatingStickers,...Object.values(state.dailyCollages||{})].forEach(arr=>{if(!Array.isArray(arr))return;const i=arr.findIndex(x=>String(x.id)===String(id));if(i>=0)arr.splice(i,1);});}
+function nextStickerPosition(scope){const c=stickerScopeContainer(scope),n=(state.floatingStickers||[]).length,w=c&&c.clientWidth||window.innerWidth,h=c&&c.clientHeight||window.innerHeight,top=c?-c.getBoundingClientRect().top:0;const x=Math.max(8,Math.min(w*.6+(n%5)*14,w-200)),y=Math.max(8,Math.min(Math.max(0,top)+140+(n%5)*14,h-160));return{x:Math.round(x),y:Math.round(y)};}
+function setStickerNodePosition(node,item){const c=node.parentElement,w=c&&c.clientWidth;if(!item.pos2){if(!w){node.style.left=(Number(item.x)||0)+'%';node.style.top=(Number(item.py)||0)+'px';return;}item.x=Number.isFinite(Number(item.px))?Number(item.px)/w*100:(Number(item.x)||0);if(!Number.isFinite(Number(item.py)))item.py=(Number(item.y)||0)/100*(c.clientHeight||window.innerHeight);item.pos2=1;}node.style.left=Number(item.x)+'%';node.style.top=(Number(item.py)||0)+'px';}
+function saveStickerNodePosition(node,item){const c=node.parentElement,w=c&&c.clientWidth||window.innerWidth,h=c&&c.clientHeight||window.innerHeight;item.px=Math.round(node.offsetLeft);item.py=Math.round(node.offsetTop);item.x=Number((node.offsetLeft/w*100).toFixed(3));item.y=Number((node.offsetTop/h*100).toFixed(3));item.w=node.offsetWidth;item.h=node.offsetHeight;item.pos2=1;save();}
+function renderStickerScope(scope){const c=stickerScopeContainer(scope);if(!c)return;scope=String(scope);let items=(state.floatingStickers||[]).filter(i=>normalizeStickerScope(i)&&i.scope===scope);if(scope.startsWith('day:'))items=[...(state.dailyCollages[scope.slice(4)]||[]).map(normalizeStickerScope),...items];renderStickerItems(c,items,scope);}
+function renderAllStickerScopes(){(state.floatingStickers||[]).forEach(normalizeStickerScope);Object.values(state.dailyCollages||{}).forEach(a=>Array.isArray(a)&&a.forEach(normalizeStickerScope));const sc=new Set(['view:'+(activeStickerView()||'time')]);state.floatingStickers.forEach(i=>{if(String(i.scope).startsWith('view:'))sc.add(i.scope);});sc.forEach(renderStickerScope);const b=document.getElementById('day-collage-board');if(b&&b.dataset.date)renderStickerScope('day:'+b.dataset.date);}
+function renderStickersEverywhere(){renderAllStickerScopes();}
+function renderFloatingStickers(){renderAllStickerScopes();}
+function reflowStickers(){renderAllStickerScopes();}
+document.querySelectorAll('.view').forEach(v=>new MutationObserver(()=>{if(v.classList.contains('active'))setTimeout(renderAllStickerScopes,30);}).observe(v,{attributes:true,attributeFilter:['class']}));
+/* imagem do topo (home) */
+function heroInline(){const h=document.querySelector('#view-time .home-hero');if(!h)return;const p=state.appearance||{};if(p.hero==='image'&&p.heroImage)h.style.setProperty('background','linear-gradient(90deg,rgba(255,255,255,.88),rgba(255,255,255,.5) 60%,rgba(255,255,255,.3)),url("'+p.heroImage+'") center/cover no-repeat','important');else h.style.removeProperty('background');}
+(function(){const o=applyAppearanceV2;applyAppearanceV2=function(){const r=o.apply(this,arguments);try{heroInline();}catch(_){}return r;};})();
+document.getElementById('hero-file')?.addEventListener('change',async e=>{const f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;try{const raw=await readFileAsDataURL(f),img=await loadImageElement(raw),sc=Math.min(1,1400/Math.max(img.width,1)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*sc));c.height=Math.max(1,Math.round(img.height*sc));c.getContext('2d').drawImage(img,0,0,c.width,c.height);state.appearance.heroImage=c.toDataURL('image/jpeg',.75);state.appearance.hero='image';applyAppearanceV2();save();renderPrefsV4();}catch(err){alert('Não consegui carregar essa imagem: '+(err&&err.message||err));}});
+applyAppearanceV2();renderAllStickerScopes();
 </script>
 </body>
 </html>
