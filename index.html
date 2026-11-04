@@ -7035,5 +7035,134 @@ updateRedesView();
 bindPrefsV4();renderPrefsV4();applyAppearanceV2();renderHomeToday();setInterval(checkReminders,30000);checkReminders();
 bootCloud();
 </script>
+  <!-- ================== PATCH: upload de imagem + stickers ancorados ================== -->
+<style>
+/* A camada de stickers acompanha a página (rola junto, some ao trocar de view) */
+#sticker-layer{position:absolute!important;inset:0!important;height:100%!important;pointer-events:none}
+.view{position:relative}
+#sticker-layer .floating-sticker{pointer-events:auto}
+</style>
+<script>
+(function(){
+  if (window.__plannerFixPatch) return;
+  window.__plannerFixPatch = true;
+
+  /* ---------- 1) Upload de imagem no hero (delegado: sobrevive a re-render) ---------- */
+  document.addEventListener('change', function(e){
+    if (e.target.id !== 'hero-file') return;
+    var f = e.target.files && e.target.files[0];
+    if (!f) return;
+    if (!f.type || f.type.indexOf('image/') !== 0){
+      if (window.alert) alert('Escolha um arquivo de imagem (PNG, JPG...).');
+      e.target.value = '';
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function(){
+      var img = new Image();
+      img.onload = function(){
+        var s = Math.min(1, 1600 / Math.max(img.width, img.height));
+        var c = document.createElement('canvas');
+        c.width  = Math.max(1, Math.round(img.width  * s));
+        c.height = Math.max(1, Math.round(img.height * s));
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        var data = c.toDataURL('image/jpeg', 0.75);
+        // grava e aplica na hora, sem depender do render dos ajustes
+        try {
+          state.appearance.heroImage = data;
+          state.appearance.hero = 'image';
+        } catch(err){}
+        document.body.dataset.hero = 'image';
+        document.body.style.setProperty('--hero-img', 'url("' + data + '")');
+        var sel = document.getElementById('pref-hero');
+        if (sel) sel.value = 'image';
+        var row = document.getElementById('hero-image-row');
+        if (row) row.hidden = false;
+        if (typeof applyAppearanceV2 === 'function') { try { applyAppearanceV2(); } catch(err){} }
+        if (typeof save === 'function') { try { save(); } catch(err){} }
+        e.target.value = '';
+      };
+      img.onerror = function(){ if (window.alert) alert('Não consegui abrir essa imagem.'); e.target.value=''; };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(f);
+  });
+
+  /* ---------- 2) Stickers/post-its ancorados à página (posição + rolagem + troca) ---------- */
+  var layer = document.getElementById('sticker-layer');
+  if (!layer) return;
+
+  // chave da página ativa (ex.: 'time' para Home, 'agenda', 'projects', 'notes'...)
+  function pageKey(){
+    var v = document.querySelector('.view.active');
+    return v ? v.id.replace(/^view-/, '') : 'time';
+  }
+  function activeView(){ return document.querySelector('.view.active'); }
+
+  // renderiza SÓ os stickers da página atual, com a camada dentro da view ativa
+  window.renderAnchoredStickers = function(){
+    var v = activeView();
+    if (!layer || !v) return;
+    if (layer.parentElement !== v) { layer.remove(); v.appendChild(layer); }
+    var key = pageKey();
+    var items = (state.floatingStickers || []).filter(function(s){
+      return (s.page || 'home') === key || (key === 'time' && !s.page);
+    });
+    if (typeof renderStickerItems === 'function'){
+      try { renderStickerItems(layer, items, null); } catch(err){}
+    }
+  };
+
+  // redireciona o render antigo (global/fixado) para o ancorado
+  window.renderFloatingStickers = function(){ renderAnchoredStickers(); };
+
+  // migra stickers antigos (sem contexto) para a Home e salva uma vez
+  try {
+    var migrated = false;
+    (state.floatingStickers || []).forEach(function(s){
+      if (!s.page) { s.page = 'home'; migrated = true; }
+    });
+    if (migrated && typeof save === 'function') save();
+  } catch(err){}
+
+  // grava a página de origem sempre que um sticker novo nasce
+  if (typeof addStickerInstance === 'function'){
+    var _add = addStickerInstance;
+    window.addStickerInstance = function(){
+      var before = {};
+      (state.floatingStickers || []).forEach(function(s){ before[s.id] = 1; });
+      var inst = _add.apply(this, arguments);
+      // 3º argumento é a data (quando existe, o sticker já vai para o mural do dia — já é ancorado)
+      var scoped = arguments.length >= 3 && arguments[2];
+      if (!scoped){
+        var created = (state.floatingStickers || []).filter(function(s){ return !before[s.id]; });
+        var target = created[0] || inst;
+        if (target && typeof target === 'object') { target.page = pageKey(); }
+        if (typeof save === 'function') { try { save(); } catch(err){} }
+      }
+      renderAnchoredStickers();
+      return inst;
+    };
+  }
+
+  // re-renderiza ao trocar de página (nav com data-view)
+  document.querySelectorAll('[data-view]').forEach(function(b){
+    b.addEventListener('click', function(){
+      setTimeout(renderAnchoredStickers, 60);
+      setTimeout(renderAnchoredStickers, 300);
+    });
+  });
+  // e também se a view ativa mudar por qualquer outro caminho
+  if (window.MutationObserver){
+    var mo = new MutationObserver(function(){
+      if (document.querySelector('.view.active') !== layer.parentElement) renderAnchoredStickers();
+    });
+    mo.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+  }
+
+  // render inicial
+  setTimeout(renderAnchoredStickers, 150);
+})();
+</script>
 </body>
 </html>
