@@ -4582,6 +4582,9 @@ const deviceId = (() => {
   if (!id) { id = 'dev-' + crypto.randomUUID(); localStorage.setItem(DEVICE_KEY, id); }
   return id;
 })();
+// Identidade desta aba. O deviceId e compartilhado por todas as abas do mesmo navegador
+// (localStorage), entao nao serve para saber "fui eu que gravei". Cada aba tem a sua.
+const tabId = 'tab-' + (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
 
 function buildInitialState(raw) {
   const s = raw ? deepMerge(structuredClone(DEFAULTS), raw) : structuredClone(DEFAULTS);
@@ -4722,6 +4725,7 @@ function stamp(value, revision) {
     revision: revision,
     updatedAt: new Date().toISOString(),
     deviceId,
+    tabId,
     score: dataScore(value)
   };
   return value;
@@ -4798,22 +4802,72 @@ function setSyncStatus(status) {
 const BASE_KEY = KEY + '-base-v4';
 const LOCAL_ONLY = new Set(['ui', '__meta']);
 const SEP = '\u0001';
+const SEP_A = '\u0002';          // separa uma lista do id de um item dela
+const ORD = '\u0003order';       // guarda a ordem dos itens de uma lista
 function fnv(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36) + ':' + str.length; }
-function flatten(src) { // profundidade 2: raiz + 1 nivel de objetos; arrays sao atomicos
+// Lista em que todo item e um objeto com id unico: e mesclada item a item
+// (duas abas/aparelhos adicionando demandas ao mesmo tempo mantem as duas).
+function isIdList(v) {
+  if (!Array.isArray(v) || !v.length) return false;
+  const seen = new Set();
+  for (const x of v) {
+    if (!x || typeof x !== 'object' || Array.isArray(x)) return false;
+    const id = x.id;
+    if ((typeof id !== 'string' && typeof id !== 'number') || id === '') return false;
+    const k = String(id);
+    if (seen.has(k)) return false;
+    seen.add(k);
+  }
+  return true;
+}
+function putFlat(out, p, v) {
+  if (isIdList(v)) {
+    out[p + SEP_A + ORD] = v.map(x => String(x.id));
+    for (const x of v) out[p + SEP_A + String(x.id)] = x;
+  } else out[p] = v;
+}
+function flatten(src) { // profundidade 2: raiz + 1 nivel de objetos; listas com id sao mescladas por item
   const out = {};
   for (const k of Object.keys(src || {})) {
     if (LOCAL_ONLY.has(k)) continue;
     const v = src[k];
     if (v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length) {
-      for (const sub of Object.keys(v)) out[k + SEP + sub] = v[sub];
-    } else out[k] = v;
+      for (const sub of Object.keys(v)) putFlat(out, k + SEP + sub, v[sub]);
+    } else putFlat(out, k, v);
+  }
+  return out;
+}
+function unflatten(flat) {
+  const out = {}, lists = {};
+  for (const p in flat) {
+    const i = p.indexOf(SEP_A);
+    if (i < 0) { setPath(out, p, flat[p]); continue; }
+    const base = p.slice(0, i), rest = p.slice(i + 1);
+    const l = lists[base] || (lists[base] = { order: null, items: {} });
+    if (rest === ORD) l.order = flat[p]; else l.items[rest] = flat[p];
+  }
+  for (const base in lists) {
+    const { order, items } = lists[base], seen = new Set(), list = [];
+    (Array.isArray(order) ? order : []).forEach(id => { if (id in items && !seen.has(id)) { seen.add(id); list.push(items[id]); } });
+    Object.keys(items).forEach(id => { if (!seen.has(id)) list.push(items[id]); });
+    setPath(out, base, list);
   }
   return out;
 }
 function hashFlat(flat) { const h = {}; for (const p in flat) h[p] = fnv(JSON.stringify(flat[p]) || 'u'); return h; }
 function hashState(v) { return hashFlat(flatten(v)); }
-function loadBase() { try { const b = JSON.parse(localStorage.getItem(BASE_KEY) || 'null'); return b && b.h ? b : null; } catch (_) { return null; } }
-function saveBase(rev, h) { try { localStorage.setItem(BASE_KEY, JSON.stringify({ rev, h, at: new Date().toISOString() })); } catch (_) {} }
+// A base (ultimo estado que ESTA aba sincronizou) fica na memoria da aba.
+// Antes ela era compartilhada no localStorage: uma aba atualizava a base e a outra,
+// com dados velhos na memoria, achava que tinha alteracoes e gravava por cima.
+let tabBase = null;
+function loadBase() {
+  if (tabBase) return tabBase;
+  try { const b = JSON.parse(localStorage.getItem(BASE_KEY) || 'null'); return b && b.h ? b : null; } catch (_) { return null; }
+}
+function saveBase(rev, h) {
+  tabBase = { rev, h, at: new Date().toISOString() };
+  try { localStorage.setItem(BASE_KEY, JSON.stringify(tabBase)); } catch (_) {}
+}
 function diffPaths(baseH) {
   const cur = hashState(state), out = [];
   for (const p in cur) if (cur[p] !== baseH[p]) out.push(p);
@@ -4829,7 +4883,7 @@ function setPath(obj, p, v) {
 }
 // 3-way merge: base (ultimo estado sincronizado), local e nuvem. Cada campo vai para quem realmente mexeu nele.
 function merge3(localS, remoteS, baseH) {
-  const L = flatten(localS), R = flatten(remoteS), out = {};
+  const L = flatten(localS), R = flatten(remoteS), F = {};
   let needPush = false;
   for (const p of new Set([...Object.keys(L), ...Object.keys(R)])) {
     const hasL = p in L, hasR = p in R;
@@ -4841,10 +4895,10 @@ function merge3(localS, remoteS, baseH) {
     else if (hb === undefined) { pick = hasL ? 'L' : 'R'; }       // campo novo
     else if (hl === hb) pick = 'R';                               // so a nuvem mudou
     else pick = 'L';                                              // local mudou (ou conflito real): edicao local vence esse campo
-    if (pick === 'L') { needPush = needPush || hl !== hr; if (hasL) setPath(out, p, L[p]); }
-    else if (hasR) setPath(out, p, R[p]);
+    if (pick === 'L') { needPush = needPush || hl !== hr; if (hasL) F[p] = L[p]; }
+    else if (hasR) F[p] = R[p];
   }
-  return { merged: out, needPush };
+  return { merged: unflatten(F), needPush };
 }
 
 let retryTimer = null, retryCount = 0, pullTimer = null;
@@ -4876,11 +4930,12 @@ function snapshotPayload(rev) {
   return { payload, sentH: hashState(payload) };
 }
 
-function commitSync(rev, hashes, updatedAt) {
+function commitSync(rev, hashes, updatedAt, wrote) {
   lastSyncedAt = updatedAt || lastSyncedAt;
   saveBase(rev, hashes);
   retryCount = 0;
   setDirty(false);
+  if (wrote) notifyOtherTabs(); // so avisa quando gravou (evita abas se chamando em loop)
 }
 
 function applyMerged(merged, reason) {
@@ -4915,7 +4970,7 @@ async function syncNow(opts) {
         const { payload, sentH } = snapshotPayload(rev + 1);
         const res = r ? await tryCAS(rev, payload)
                       : await sb.from('rotina_state').insert({ key: ROW_KEY, data: payload, updated_at: new Date().toISOString() }).select('updated_at').then(x => x.error ? { ok: false } : { ok: true, updated_at: x.data[0].updated_at });
-        if (res.ok) { commitSync(rev + 1, sentH, res.updated_at); setSyncStatus('synced'); return true; }
+        if (res.ok) { commitSync(rev + 1, sentH, res.updated_at, true); setSyncStatus('synced'); return true; }
       }
       throw new Error('conflito ao importar');
     }
@@ -4926,7 +4981,7 @@ async function syncNow(opts) {
       if (changed.length) {
         const { payload, sentH } = snapshotPayload(base.rev + 1);
         const r = await tryCAS(base.rev, payload);
-        if (r.ok) { commitSync(base.rev + 1, sentH, r.updated_at); setSyncStatus('synced'); return true; }
+        if (r.ok) { commitSync(base.rev + 1, sentH, r.updated_at, true); setSyncStatus('synced'); return true; }
         // conflito: outro aparelho gravou antes -> cai no merge abaixo
       } else if (!opts.pull) { setSyncStatus('synced'); return true; } // so mudou UI/navegacao: nada a enviar
     }
@@ -4938,7 +4993,7 @@ async function syncNow(opts) {
         if (dataScore(state) === 0) { setSyncStatus('synced'); return true; }
         const { payload, sentH } = snapshotPayload(1);
         const { data, error } = await sb.from('rotina_state').insert({ key: ROW_KEY, data: payload, updated_at: new Date().toISOString() }).select('updated_at');
-        if (!error && data && data.length) { commitSync(1, sentH, data[0].updated_at); setSyncStatus('synced'); return true; }
+        if (!error && data && data.length) { commitSync(1, sentH, data[0].updated_at, true); setSyncStatus('synced'); return true; }
         continue; // alguem criou antes: tenta de novo lendo
       }
       base = loadBase();
@@ -4950,7 +5005,7 @@ async function syncNow(opts) {
       if (!res.needPush) { commitSync(remote.rev, hashState(state), remote.updated_at); setSyncStatus('synced'); return true; }
       const { payload, sentH } = snapshotPayload(remote.rev + 1);
       const r = await tryCAS(remote.rev, payload);
-      if (r.ok) { commitSync(remote.rev + 1, sentH, r.updated_at); setSyncStatus('synced'); return true; }
+      if (r.ok) { commitSync(remote.rev + 1, sentH, r.updated_at, true); setSyncStatus('synced'); return true; }
     }
     throw new Error('conflito persistente');
   } catch (e) {
@@ -5013,13 +5068,38 @@ function setupRealtime() {
       payload => {
         const nr = payload.new || {};
         const m = nr.data && nr.data.__meta;
-        if (m && m.deviceId === deviceId) return;                                  // foi eu que gravei
+        if (m && m.tabId === tabId) return;                                        // foi esta aba que gravou
         if (nr.updated_at && lastSyncedAt && nr.updated_at === lastSyncedAt) return;
         clearTimeout(pullTimer);
         pullTimer = setTimeout(() => syncNow({ pull: true }), 800);                // puxa e mescla; nunca grava por causa disso
       }
     )
     .subscribe();
+  setupTabSync();
+}
+
+// Outras abas do mesmo navegador: quando uma grava, as outras puxam e mesclam na hora,
+// sem esperar o realtime e sem gravar por cima.
+let tabChannel = null;
+function notifyOtherTabs() {
+  try { if (tabChannel) tabChannel.postMessage({ type: 'synced', tabId, at: Date.now() }); } catch (_) {}
+}
+function pullFromOtherTab() {
+  if (!cloudStarted) return;
+  clearTimeout(pullTimer);
+  pullTimer = setTimeout(() => syncNow({ pull: true }), 400);
+}
+function setupTabSync() {
+  if (window.__tabSyncReady) return;
+  window.__tabSyncReady = true;
+  try {
+    if ('BroadcastChannel' in window) {
+      tabChannel = new BroadcastChannel('rotina-sync-' + ROW_KEY);
+      tabChannel.onmessage = ev => { const d = ev && ev.data; if (d && d.tabId !== tabId) pullFromOtherTab(); };
+    }
+  } catch (_) { tabChannel = null; }
+  // navegador sem BroadcastChannel: usa o aviso de mudanca do localStorage
+  if (!tabChannel) window.addEventListener('storage', ev => { if (ev.key === KEY) pullFromOtherTab(); });
 }
 
 async function bootCloud() {
